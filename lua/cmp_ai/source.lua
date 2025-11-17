@@ -32,6 +32,9 @@ function Source:_do_complete(ctx, cb)
       end)
     end
   end
+  vim.api.nvim_exec_autocmds({ "User" }, {
+    pattern = "CmpAiRequestStarted",
+  })
   local max_lines = conf:get('max_lines')
   local cursor = ctx.context.cursor
   local cur_line = ctx.context.cursor_line
@@ -54,6 +57,9 @@ function Source:_do_complete(ctx, cb)
   local service = conf:get('provider')
   service:complete(before, after, function(data)
     self:end_complete(data, ctx, cb)
+    vim.api.nvim_exec_autocmds({ "User" }, {
+      pattern = "CmpAiRequestComplete",
+    })
     if conf:get('notify') then
       local cb = conf:get('notify_callback')
       if type(cb) == 'table' then
