@@ -73,26 +73,9 @@ function Ollama:complete(lines_before, lines_after, cb)
       options = model_config.options,
     }
 
-    -- if self.params.system then
-    --   table.insert(messages, {
-    --     role = "system",
-    --     message = self.params.system(vim.bo.filetype)
-    --   })
-    -- end
-
     local formatted_prompt = prompt(lines_before, lines_after)
 
-    -- if type(formatted_prompt) == 'table' then
     data = vim.tbl_deep_extend('force', data, formatted_prompt)
-    -- else
-    --   table.insert(messages, {
-    --     role = "user",
-    --     content = prompt(lines_before, lines_after),
-    --   })
-    --   data.messages = messages
-    -- end
-
-    vim.print(data)
 
     self:Post(self.params.base_url .. self.params.generate_endpoint, self.params.headers, data, function(answer)
       local new_data = {}
