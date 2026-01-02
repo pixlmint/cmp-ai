@@ -7,6 +7,7 @@ M.formatters = {
     system = function(filetype)
       return [=[You are a coding companion.
 You need to suggest code for the language ]=] .. filetype .. [=[
+
 Given some code prefix and suffix for context, output code which should follow the prefix code.
 You should only output valid code in the language ]=] .. filetype .. [=[
 . to clearly define a code block, including white space, we will wrap the code block
@@ -41,7 +42,11 @@ Your answer should be:
 
   -- used for codegemma and qwen
   fim = function(lines_before, lines_after)
-    return '<|fim_prefix|>' .. lines_before .. '<|fim_suffix|>' .. lines_after .. '<|fim_middle|>'
+    return {
+      prompt = lines_before,
+      suffix = lines_after,
+    }
+    -- return '<|fim_prefix|>' .. lines_before .. '<|fim_suffix|>' .. lines_after .. '<|fim_middle|>'
   end,
 }
 

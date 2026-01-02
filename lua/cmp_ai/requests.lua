@@ -20,7 +20,6 @@ end
 
 function Service:Post(url, headers, data, cb)
     Service:_Request(url, headers, data, cb, { "-X", "POST" })
-
 end
 
 function Service:Get(url, headers, data, cb)
