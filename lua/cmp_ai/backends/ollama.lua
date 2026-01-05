@@ -36,7 +36,6 @@ function Ollama:configure_model(cb)
   local url = self.params.base_url .. self.params.ps_endpoint
   self:Get(url, self.params.headers, nil, function(data)
     if type(data) == 'table' and data['models'] ~= nil then
-      vim.print(url, data)
       local viable_models = {}
       local default_model_loaded = false
       for _, model_info in pairs(data['models']) do
@@ -64,7 +63,6 @@ end
 
 function Ollama:complete(lines_before, lines_after, cb)
   self:configure_model(function(model_config)
-    vim.print(model_config)
     local prompt = model_config.prompt or formatter.ollama_code
     local data = {
       model = model_config.model,
