@@ -61,7 +61,9 @@ function Ollama:configure_model(cb)
   end)
 end
 
-function Ollama:complete(lines_before, lines_after, cb)
+function Ollama:complete(lines_before, lines_after, cb, additional_context)
+  additional_context = additional_context or ''
+
   self:configure_model(function(model_config)
     local prompt = model_config.prompt or formatter.ollama_code
     local data = {
@@ -71,7 +73,7 @@ function Ollama:complete(lines_before, lines_after, cb)
       options = model_config.options,
     }
 
-    local formatted_prompt = prompt(lines_before, lines_after)
+    local formatted_prompt = prompt(lines_before, lines_after, nil, additional_context)
 
     data = vim.tbl_deep_extend('force', data, formatted_prompt)
 

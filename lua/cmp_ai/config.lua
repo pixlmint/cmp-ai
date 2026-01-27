@@ -21,6 +21,14 @@ local conf = {
   collect_data = false,
   data_file = vim.fn.stdpath('data') .. '/cmp-ai/completions.jsonl',
   data_buffer_size = 50,
+
+  -- Context providers configuration
+  context_providers = {
+    providers = {},
+    merge_strategy = 'concat', -- 'concat' | 'weighted' | 'custom'
+    custom_merger = nil,
+    timeout_ms = 500,
+  },
 }
 
 function M:setup(params)
@@ -30,8 +38,14 @@ function M:setup(params)
     old_provider_name = conf.provider.name
   end
 
+  -- Deep merge configuration, especially for nested tables like context_providers
   for k, v in pairs(params or {}) do
-    conf[k] = v
+    if k == 'context_providers' and type(v) == 'table' and type(conf[k]) == 'table' then
+      -- Deep merge context_providers to preserve defaults
+      conf[k] = vim.tbl_deep_extend('force', conf[k], v)
+    else
+      conf[k] = v
+    end
   end
 
   -- Determine the new provider name
@@ -65,6 +79,12 @@ function M:setup(params)
       buffer_size = conf.data_buffer_size,
     })
   end
+
+  -- Initialize context providers if any are configured
+  if conf.context_providers and conf.context_providers.providers and #conf.context_providers.providers > 0 then
+    local context_manager = require('cmp_ai.context_providers')
+    context_manager.setup(conf.context_providers)
+  end
 end
 
 function M:get(what)
@@ -72,3 +92,8 @@ function M:get(what)
 end
 
 return M
+
+
+
+
+
