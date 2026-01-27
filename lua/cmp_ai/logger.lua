@@ -43,7 +43,7 @@ end
 
 --- Log a request event
 --- @param request_id string UUID for this request
---- @param data table Request data (filename, filetype, cursor, lines_before, lines_after, provider)
+--- @param data table Request data (cwd, filename, filetype, cursor, lines_before, lines_after, provider, provider_config)
 function Logger:log_request(request_id, data)
   if not config.enabled then
     return
@@ -53,12 +53,14 @@ function Logger:log_request(request_id, data)
     event_type = 'request',
     request_id = request_id,
     timestamp = os.time(),
+    cwd = data.cwd,
     filename = data.filename,
     filetype = data.filetype,
     cursor = data.cursor,
     lines_before = data.lines_before,
     lines_after = data.lines_after,
     provider = data.provider,
+    provider_config = data.provider_config,
   }
 
   self:_add_to_buffer(entry)

@@ -12,6 +12,33 @@ local function generate_uuid()
   end)
 end
 
+--- Safely serialize provider config for logging
+--- Only logs provider.params (never api_key or headers)
+--- Replaces functions with type metadata
+local function safe_serialize_config(params)
+  if type(params) ~= 'table' then
+    return params
+  end
+
+  local result = {}
+  for key, value in pairs(params) do
+    local value_type = type(value)
+    if value_type == 'function' then
+      result[key] = { __type = 'function' }
+    elseif value_type == 'table' then
+      result[key] = safe_serialize_config(value) -- Recursive
+    elseif value_type == 'string' or value_type == 'number' or value_type == 'boolean' then
+      result[key] = value
+    elseif value_type == 'nil' then
+      -- Skip nil values
+    else
+      -- Thread, userdata, etc.
+      result[key] = { __type = value_type }
+    end
+  end
+  return result
+end
+
 local Source = {}
 function Source:new(o)
   o = o or {}
@@ -70,6 +97,7 @@ function Source:_do_complete(ctx, cb)
   local request_start_time = os.clock()
 
   if logger:is_enabled() then
+    local provider = conf:get('provider')
     logger:log_request(request_id, {
       cwd = vim.fn.getcwd(),
       filename = vim.api.nvim_buf_get_name(0),
@@ -77,7 +105,8 @@ function Source:_do_complete(ctx, cb)
       cursor = { line = cursor.line, col = cursor.col },
       lines_before = before,
       lines_after = after,
-      provider = conf:get('provider').name,
+      provider = provider.name,
+      provider_config = safe_serialize_config(provider.params),
     })
 
     self.pending_requests[request_id] = {
