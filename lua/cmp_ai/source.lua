@@ -117,8 +117,36 @@ function Source:_do_complete(ctx, cb)
 
   -- Gather additional context from context providers
   local context_manager = require('cmp_ai.context_providers')
-  
-  if context_manager.is_enabled() then
+
+  local function completed(data)
+    self:end_complete(data, ctx, cb, request_id, request_start_time)
+    vim.api.nvim_exec_autocmds({ "User" }, {
+      pattern = "CmpAiRequestComplete",
+    })
+    if conf:get('notify') then
+      local cb = conf:get('notify_callback')
+      if type(cb) == 'table' then
+        if cb['on_end'] == nil then
+          return
+        else
+          async.run(function() cb['on_end']('Completion ended') end)
+        end
+      else
+        async.run(function() cb('Completion ended', false) end)
+      end
+    end
+  end
+
+  local service = conf:get('provider')
+
+  if service == nil then
+    return
+  end
+
+  if not context_manager.is_enabled() then
+    -- No context providers enabled, proceed normally
+    service:complete(before, after, completed)
+  else
     -- Prepare context parameters
     local context_params = {
       bufnr = ctx.context.bufnr,
@@ -127,57 +155,10 @@ function Source:_do_complete(ctx, cb)
       lines_after = after,
       filetype = vim.bo.filetype,
     }
-    
+
     -- Gather context asynchronously
     context_manager.gather_context(context_params, function(additional_context)
-      local service = conf:get('provider')
-      service:complete(before, after, function(data)
-        self:end_complete(data, ctx, cb, request_id, request_start_time)
-        vim.api.nvim_exec_autocmds({ "User" }, {
-          pattern = "CmpAiRequestComplete",
-        })
-        if conf:get('notify') then
-          local cb = conf:get('notify_callback')
-          if type(cb) == 'table' then
-            if cb['on_end'] == nil then
-              return
-            else
-              async.run(function()
-                cb['on_end']('Completion ended')
-              end)
-            end
-          else
-            async.run(function()
-              cb('Completion ended', false)
-            end)
-          end
-        end
-      end, additional_context)
-    end)
-  else
-    -- No context providers enabled, proceed normally
-    local service = conf:get('provider')
-    service:complete(before, after, function(data)
-      self:end_complete(data, ctx, cb, request_id, request_start_time)
-      vim.api.nvim_exec_autocmds({ "User" }, {
-        pattern = "CmpAiRequestComplete",
-      })
-      if conf:get('notify') then
-        local cb = conf:get('notify_callback')
-        if type(cb) == 'table' then
-          if cb['on_end'] == nil then
-            return
-          else
-            async.run(function()
-              cb['on_end']('Completion ended')
-            end)
-          end
-        else
-          async.run(function()
-            cb('Completion ended', false)
-          end)
-        end
-      end
+      service:complete(before, after, completed, additional_context)
     end)
   end
 end
@@ -257,4 +238,3 @@ function Source:execute(completion_item, callback)
 end
 
 return Source
-
