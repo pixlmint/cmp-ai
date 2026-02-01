@@ -33,6 +33,8 @@ function Ollama:new(o)
 end
 
 function Ollama:configure_model(cb)
+  -- TODO: This function should be better equipped to deal with a timeout/ bad response
+  -- TODO: Implement caching
   local url = self.params.base_url .. self.params.ps_endpoint
   self:Get(url, self.params.headers, nil, function(data)
     if type(data) == 'table' and data['models'] ~= nil then
