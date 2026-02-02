@@ -52,7 +52,7 @@ function M.register_provider(provider_config)
     -- Custom provider (function or instance)
     if type(provider_config.provider) == 'function' then
       -- Wrap function in a provider object
-      local BaseContextProvider = require('cmp_ai.context_providers.base')
+      local BaseContextProvider = require('cmp_ai.context.base')
       provider_instance = BaseContextProvider:new(provider_config.opts or {})
       provider_instance.get_context = function(self, params, callback)
         provider_config.provider(params.bufnr, params.cursor_pos, callback)
@@ -64,7 +64,7 @@ function M.register_provider(provider_config)
     end
   else
     -- Built-in provider - load by name
-    local status, ContextProvider = pcall(require, 'cmp_ai.context_providers.' .. provider_config.name)
+    local status, ContextProvider = pcall(require, 'cmp_ai.context.' .. provider_config.name)
     if not status then
       vim.notify(
         'cmp-ai: Failed to load context provider "' .. provider_config.name .. '": ' .. ContextProvider,
@@ -219,6 +219,3 @@ function M.get_providers()
 end
 
 return M
-
-
-

@@ -82,7 +82,7 @@ function M:setup(params)
 
   -- Initialize context providers if any are configured
   if conf.context_providers and conf.context_providers.providers and #conf.context_providers.providers > 0 then
-    local context_manager = require('cmp_ai.context_providers')
+    local context_manager = require('cmp_ai.context')
     context_manager.setup(conf.context_providers)
   end
 end
