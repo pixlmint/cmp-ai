@@ -2,6 +2,18 @@ local M = {}
 
 local conf = {
   max_lines = 50,
+  -- Strategy to use for extracting code that should be sent to the model
+  -- Options:
+  --    lines: Just grab a preset maximum number of lines (defined by max_lines)
+  --    smart: For example when writing a function, only include the
+  --           function body and doc comment
+  surround_extractor_strategy = 'lines',   -- lines | smart
+  -- List of additional context providers
+  -- Builtin options:
+  --    - diagnostics: Show LSP diagnostics in the current file
+  --    - metadata: git branch name, project name, filename...
+  --    - LSP completions
+  extra_context_providers = {},
   run_on_every_keystroke = true,
   provider = 'Ollama',
   provider_options = {},

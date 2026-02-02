@@ -29,7 +29,11 @@ end
 
 -- Detect the current suggestion context using LSP
 -- Returns: "init", "comment_func", "impl", or "unknown"
+--- @param bufnr number
+--- @param pos table
+--- @param callback fun(suggestion_context: string)
 function M.detect_suggestion_context(bufnr, pos, callback)
+  -- TODO: Detection probably doesn't need to use Treesitter
   bufnr = bufnr or vim.api.nvim_get_current_buf()
   pos = pos or vim.api.nvim_win_get_cursor(0)
 
