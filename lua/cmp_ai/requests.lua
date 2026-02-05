@@ -19,11 +19,11 @@ function Service:json_decode(data)
 end
 
 function Service:Post(url, headers, data, cb)
-  Service:_Request(url, headers, data, cb, { "-X", "POST" })
+  return Service:_Request(url, headers, data, cb, { '-X', 'POST' })
 end
 
 function Service:Get(url, headers, data, cb)
-  Service:_Request(url, headers, data, cb)
+  return Service:_Request(url, headers, data, cb)
 end
 
 function Service:_Request(url, headers, data, cb, args)
@@ -63,35 +63,35 @@ function Service:_Request(url, headers, data, cb, args)
 
   args[#args + 1] = url
 
-  job
-      :new({
-        command = 'curl',
-        args = args,
-        on_exit = vim.schedule_wrap(function(response, exit_code)
-          if tmpfname ~= nil then
-            os.remove(tmpfname)
-          end
-          if exit_code ~= 0 then
-            if conf:get('log_errors') then
-              vim.notify('An Error Occurred ...', vim.log.levels.ERROR)
-            end
-            cb({ { error = 'ERROR: API Error' } })
-          end
+  local j = job:new({
+    command = 'curl',
+    args = args,
+    on_exit = vim.schedule_wrap(function(response, exit_code)
+      if tmpfname ~= nil then
+        os.remove(tmpfname)
+      end
+      if exit_code ~= 0 then
+        if conf:get('log_errors') then
+          vim.notify('An Error Occurred ...', vim.log.levels.ERROR)
+        end
+        cb({ { error = 'ERROR: API Error' } })
+      end
 
-          local result = table.concat(response:result(), '\n')
-          local json = self:json_decode(result)
-          vim.api.nvim_exec_autocmds({ "User" }, {
-            pattern = "CmpAiRequestFinished",
-            data = { response = json }
-          })
-          if json == nil then
-            cb({ { error = 'No Response.' } })
-          else
-            cb(json)
-          end
-        end),
+      local result = table.concat(response:result(), '\n')
+      local json = self:json_decode(result)
+      vim.api.nvim_exec_autocmds({ 'User' }, {
+        pattern = 'CmpAiRequestFinished',
+        data = { response = json }
       })
-      :start()
+      if json == nil then
+        cb({ { error = 'No Response.' } })
+      else
+        cb(json)
+      end
+    end),
+  })
+  j:start()
+  return j
 end
 
 return Service

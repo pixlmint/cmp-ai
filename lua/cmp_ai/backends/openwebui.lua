@@ -60,7 +60,7 @@ function OpenWebUI:complete(lines_before, lines_after, cb)
 
   data = vim.tbl_extend('force', data, self.params.model_params)
 
-  self:Post(self.params.url, self.headers, json_encode(data), function(answer)
+  return self:Post(self.params.url, self.headers, json_encode(data), function(answer)
     if self.params.raw_response_cb ~= nil and type(self.params.raw_response_cb) == 'function' then
       async.run(function()
         self.params.raw_response_cb(answer)

@@ -43,7 +43,7 @@ function HF:complete(lines_before, lines_after, cb)
       stop = { '<|endoftext|>', '<fim-' },
     },
   }
-  self:Get(BASE_URL, self.headers, data, function(answer)
+  return self:Get(BASE_URL, self.headers, data, function(answer)
     local new_data = {}
     if answer.error ~= nil then
       vim.notify('HuggingFace error: ' .. answer.error)

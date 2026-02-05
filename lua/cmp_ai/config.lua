@@ -14,7 +14,6 @@ local conf = {
   --    - metadata: git branch name, project name, filename...
   --    - LSP completions
   extra_context_providers = {},
-  run_on_every_keystroke = true,
   provider = 'Ollama',
   provider_options = {},
   notify = true,
@@ -40,6 +39,19 @@ local conf = {
     merge_strategy = 'concat', -- 'concat' | 'weighted' | 'custom'
     custom_merger = nil,
     timeout_ms = 500,
+  },
+
+  -- Inline completion configuration (managed by inline.lua)
+  inline = {
+    debounce_ms = 150,
+    auto_trigger = true,
+    highlight = 'Comment',
+    keymap = {
+      accept = '<Tab>',
+      dismiss = '<C-]>',
+      next = '<M-]>',
+      prev = '<M-[>',
+    },
   },
 }
 

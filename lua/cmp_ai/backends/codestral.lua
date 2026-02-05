@@ -41,7 +41,7 @@ function Codestral:complete(lines_before, lines_after, cb)
   }
 
   data = vim.tbl_deep_extend('keep', data, self.params)
-  self:Get(BASE_URL, self.headers, data, function(answer)
+  return self:Get(BASE_URL, self.headers, data, function(answer)
     local new_data = {}
     if answer.choices then
       for _, response in ipairs(answer.choices) do

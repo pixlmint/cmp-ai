@@ -42,7 +42,7 @@ local function extract_lines(start_line, end_line, cursor)
 end
 
 
---- @param ctx cmp.SourceCompletionApiParams
+--- @param ctx table
 function M.simple_extractor(ctx)
   local max_lines = conf:get('max_lines')
 
@@ -84,7 +84,7 @@ end
 local locate_function = curry_textobjects('@function.outer')
 local locate_comment = curry_textobjects('@comment.outer')
 
---- @param ctx cmp.SourceCompletionApiParams
+--- @param ctx table
 function M.smart_extractor(ctx, current_context)
   local rng
   if current_context == 'impl' then
