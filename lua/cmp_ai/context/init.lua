@@ -181,7 +181,6 @@ function M.gather_context(params, callback)
   end)
 
   -- Gather from all providers in parallel
-  vim.print('registered_providers', registered_providers)
   for _, provider_data in ipairs(registered_providers) do
     local provider = provider_data.instance
     local success, err = pcall(function()

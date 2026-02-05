@@ -106,7 +106,6 @@ function Source:_do_complete(ctx, cb)
 
   --- @param context CompletionContext
   local function next_action(context)
-    vim.print(context)
     if logger:is_enabled() then
       local provider = conf:get('provider')
       logger:log_request(request_id, {
@@ -136,7 +135,6 @@ function Source:_do_complete(ctx, cb)
       local after = context.lines_after
 
       service:get_model(function(model_config)
-        vim.print('model_config', model_config)
         if not context_manager.is_enabled() or not model_config.allows_extra_context then
           vim.notify('using simple completion', vim.log.levels.INFO)
           -- No context providers enabled, proceed normally
@@ -155,7 +153,6 @@ function Source:_do_complete(ctx, cb)
 
           -- Gather context asynchronously
           context_manager.gather_context(context_params, function(additional_context)
-            vim.print('additional_context', additional_context)
             local prompt = model_config.prompt(before, after, nil, additional_context)
             service:complete(prompt, completed, model_config)
           end)
@@ -164,7 +161,6 @@ function Source:_do_complete(ctx, cb)
     end
   end
 
-  print('surround_extract_strategy: ' .. surround_extract_strategy)
   if surround_extract_strategy == 'smart' then
     require('cmp_ai.context.utils').detect_suggestion_context(ctx.context.bufnr, pos, function(current_context)
       next_action(surround_extractor.smart_extractor(ctx, current_context))
