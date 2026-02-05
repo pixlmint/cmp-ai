@@ -398,7 +398,9 @@ local function setup_keymaps()
   if km.accept then
     vim.keymap.set('i', km.accept, function()
       if M.is_visible() then
-        return M.accept() and '' or nil
+        -- Schedule accept so buffer modification happens outside expr evaluation
+        vim.schedule(M.accept)
+        return ''
       end
       -- Fall through to original mapping
       return vim.api.nvim_replace_termcodes(km.accept, true, false, true)
