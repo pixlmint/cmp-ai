@@ -1,4 +1,4 @@
-local requests = require('cmp_ai.requests')
+local requests = require('cassandra_ai.requests')
 
 Tabby = requests:new(nil)
 

@@ -1,4 +1,4 @@
-local conf = require('cmp_ai.config')
+local conf = require('cassandra_ai.config')
 
 local M = {}
 
@@ -13,7 +13,7 @@ local cursor_pos = nil
 local bufnr = nil
 local internal_move = false
 
-local ns = vim.api.nvim_create_namespace('cmp_ai_inline')
+local ns = vim.api.nvim_create_namespace('cassandra_ai_inline')
 
 
 -- ---------------------------------------------------------------------------
@@ -80,13 +80,13 @@ local function render_ghost_text(text)
   local row = cursor_pos[1] - 1 -- 0-indexed
   local col = cursor_pos[2]
 
-  local virt_text = { { lines[1], 'CmpAiInline' } }
+  local virt_text = { { lines[1], 'CassandraAiInline' } }
   local virt_lines = nil
 
   if #lines > 1 then
     virt_lines = {}
     for i = 2, #lines do
-      table.insert(virt_lines, { { lines[i], 'CmpAiInline' } })
+      table.insert(virt_lines, { { lines[i], 'CassandraAiInline' } })
     end
   end
 
@@ -154,7 +154,7 @@ function M.trigger()
     local after = surround_context.lines_after
 
     local request_id = generate_uuid()
-    local logger = require('cmp_ai.logger')
+    local logger = require('cassandra_ai.logger')
 
     local start_time
 
@@ -173,7 +173,7 @@ function M.trigger()
     end
 
     vim.api.nvim_exec_autocmds({ 'User' }, {
-      pattern = 'CmpAiRequestStarted',
+      pattern = 'CassandraAiRequestStarted',
     })
 
     local function on_complete(data)
@@ -200,7 +200,7 @@ function M.trigger()
       end
 
       vim.api.nvim_exec_autocmds({ 'User' }, {
-        pattern = 'CmpAiRequestComplete',
+        pattern = 'CassandraAiRequestComplete',
       })
 
       if not data or #data == 0 then
@@ -212,7 +212,7 @@ function M.trigger()
       render_ghost_text(completions[current_index])
     end
 
-    local context_manager = require('cmp_ai.context')
+    local context_manager = require('cassandra_ai.context')
 
     -- Ollama uses get_model; other backends use complete(before, after, cb) directly
     if service.get_model then
@@ -261,7 +261,7 @@ function M.trigger()
     end
   end
 
-  local surround_extractor = require('cmp_ai.context.surround_extractor')
+  local surround_extractor = require('cassandra_ai.context.surround_extractor')
   local ctx = {
     cursor = { line = cursor_pos[1], col = cursor_pos[2] },
     bufnr = bufnr,
@@ -269,7 +269,7 @@ function M.trigger()
 
   local strategy = conf:get('surround_extractor_strategy')
   if strategy == 'smart' then
-    require('cmp_ai.context.utils').detect_suggestion_context(bufnr, cursor_pos, function(current_context)
+    require('cassandra_ai.context.utils').detect_suggestion_context(bufnr, cursor_pos, function(current_context)
       if my_gen ~= generation then return end
       ctx.current_context = current_context
       do_complete(surround_extractor.smart_extractor(ctx))
@@ -392,7 +392,7 @@ end
 -- ---------------------------------------------------------------------------
 
 local function setup_autocmds()
-  local group = vim.api.nvim_create_augroup('cmp_ai_inline', { clear = true })
+  local group = vim.api.nvim_create_augroup('cassandra_ai_inline', { clear = true })
 
   vim.api.nvim_create_autocmd('CursorMovedI', {
     group = group,
@@ -481,7 +481,7 @@ function M.setup(opts)
 
   -- Define highlight group
   local ic = conf:get('inline')
-  vim.api.nvim_set_hl(0, 'CmpAiInline', { link = ic.highlight, default = true })
+  vim.api.nvim_set_hl(0, 'CassandraAiInline', { link = ic.highlight, default = true })
 
   setup_autocmds()
   setup_keymaps()

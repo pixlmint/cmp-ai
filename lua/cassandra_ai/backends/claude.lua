@@ -1,5 +1,5 @@
-local requests = require('cmp_ai.requests')
-local formatters = require('cmp_ai.prompt_formatters').formatters
+local requests = require('cassandra_ai.requests')
+local formatters = require('cassandra_ai.prompt_formatters').formatters
 
 Claude = requests:new(nil)
 BASE_URL = 'https://api.anthropic.com/v1/messages'

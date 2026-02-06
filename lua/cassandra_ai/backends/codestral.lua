@@ -1,4 +1,4 @@
-local requests = require('cmp_ai.requests')
+local requests = require('cassandra_ai.requests')
 
 Codestral = requests:new(nil)
 BASE_URL = 'https://codestral.mistral.ai/v1/fim/completions'

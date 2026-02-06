@@ -1,6 +1,6 @@
-local requests = require('cmp_ai.requests')
+local requests = require('cassandra_ai.requests')
 local async = require('plenary.async')
-local formatters = require('cmp_ai.prompt_formatters').formatters
+local formatters = require('cassandra_ai.prompt_formatters').formatters
 
 OpenWebUI = requests:new(nil)
 

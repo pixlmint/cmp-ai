@@ -1,5 +1,5 @@
-local requests = require('cmp_ai.requests')
-local formatters = require('cmp_ai.prompt_formatters').formatters
+local requests = require('cassandra_ai.requests')
+local formatters = require('cassandra_ai.prompt_formatters').formatters
 
 OpenAI = requests:new(nil)
 BASE_URL = 'https://api.openai.com/v1/chat/completions'

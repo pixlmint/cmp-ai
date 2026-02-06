@@ -1,6 +1,6 @@
 local M = {}
 
-local conf = require('cmp_ai.config')
+local conf = require('cassandra_ai.config')
 local api = vim.api
 
 M._textobjects_instance = nil

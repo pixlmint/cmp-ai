@@ -1,5 +1,5 @@
-local requests = require('cmp_ai.requests')
-local formatter = require('cmp_ai.prompt_formatters').formatters
+local requests = require('cassandra_ai.requests')
+local formatter = require('cassandra_ai.prompt_formatters').formatters
 
 Ollama = requests:new(nil)
 

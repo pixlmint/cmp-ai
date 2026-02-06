@@ -1,5 +1,5 @@
 local job = require('plenary.job')
-local conf = require('cmp_ai.config')
+local conf = require('cassandra_ai.config')
 Service = {}
 
 function Service:new(o)
@@ -53,7 +53,7 @@ function Service:_Request(url, headers, data, cb, args)
     args[#args + 1] = '--max-time'
     args[#args + 1] = tonumber(timeout_seconds)
   elseif timeout_seconds ~= nil then
-    vim.notify('cmp-ai: your max_timeout_seconds config is not a number', vim.log.levels.WARN)
+    vim.notify('cassandra-ai: your max_timeout_seconds config is not a number', vim.log.levels.WARN)
   end
 
   for _, h in ipairs(headers) do
@@ -80,7 +80,7 @@ function Service:_Request(url, headers, data, cb, args)
       local result = table.concat(response:result(), '\n')
       local json = self:json_decode(result)
       vim.api.nvim_exec_autocmds({ 'User' }, {
-        pattern = 'CmpAiRequestFinished',
+        pattern = 'CassandraAiRequestFinished',
         data = { response = json }
       })
       if json == nil then
