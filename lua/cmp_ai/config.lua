@@ -62,15 +62,7 @@ function M:setup(params)
     old_provider_name = conf.provider.name
   end
 
-  -- Deep merge configuration, especially for nested tables like context_providers
-  for k, v in pairs(params or {}) do
-    if k == 'context_providers' and type(v) == 'table' and type(conf[k]) == 'table' then
-      -- Deep merge context_providers to preserve defaults
-      conf[k] = vim.tbl_deep_extend('force', conf[k], v)
-    else
-      conf[k] = v
-    end
-  end
+  conf = vim.tbl_deep_extend('force', conf, params)
 
   -- Determine the new provider name
   local new_provider_name = type(conf.provider) == 'string' and conf.provider or conf.provider.name

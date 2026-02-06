@@ -13,19 +13,6 @@ local cursor_pos = nil
 local bufnr = nil
 local internal_move = false
 
--- Inline-specific config (set in setup)
-local inline_conf = {
-  debounce_ms = 150,
-  auto_trigger = true,
-  highlight = 'Comment',
-  keymap = {
-    accept = '<Tab>',
-    dismiss = '<C-]>',
-    next = '<M-]>',
-    prev = '<M-[>',
-  },
-}
-
 local ns = vim.api.nvim_create_namespace('cmp_ai_inline')
 
 -- ---------------------------------------------------------------------------
@@ -333,13 +320,14 @@ end
 
 local function debounced_trigger()
   cancel_debounce()
-  if not inline_conf.auto_trigger then
+  local ic = conf:get('inline')
+  if not ic.auto_trigger then
     return
   end
   if not debounce_timer then
     debounce_timer = vim.uv.new_timer()
   end
-  debounce_timer:start(inline_conf.debounce_ms, 0, vim.schedule_wrap(function()
+  debounce_timer:start(ic.debounce_ms, 0, vim.schedule_wrap(function()
     M.trigger()
   end))
 end
@@ -393,7 +381,7 @@ end
 -- ---------------------------------------------------------------------------
 
 local function setup_keymaps()
-  local km = inline_conf.keymap
+  local km = conf:get('inline').keymap
 
   if km.accept then
     vim.keymap.set('i', km.accept, function()
@@ -433,18 +421,12 @@ end
 function M.setup(opts)
   opts = opts or {}
 
-  -- Extract inline-specific config
-  if opts.inline then
-    inline_conf = vim.tbl_deep_extend('force', inline_conf, opts.inline)
-  end
-
-  -- Forward remaining opts to config for provider initialization
-  local config_opts = vim.tbl_extend('force', {}, opts)
-  config_opts.inline = nil
-  conf:setup(config_opts)
+  -- Pass all opts to config (inline is deep-merged there)
+  conf:setup(opts)
 
   -- Define highlight group
-  vim.api.nvim_set_hl(0, 'CmpAiInline', { link = inline_conf.highlight, default = true })
+  local ic = conf:get('inline')
+  vim.api.nvim_set_hl(0, 'CmpAiInline', { link = ic.highlight, default = true })
 
   setup_autocmds()
   setup_keymaps()
