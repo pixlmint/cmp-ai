@@ -22,7 +22,7 @@ Using [Lazy](https://github.com/folke/lazy.nvim/):
 
 ```lua
 return require("lazy").setup({
-    {'pixlmint/cassandra-ai', dependencies = 'nvim-lua/plenary.nvim'},
+    {'pixlmint/cassandra-ai.nvim', dependencies = 'nvim-lua/plenary.nvim'},
 })
 ```
 
