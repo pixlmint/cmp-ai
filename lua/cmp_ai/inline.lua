@@ -15,6 +15,47 @@ local internal_move = false
 
 local ns = vim.api.nvim_create_namespace('cmp_ai_inline')
 
+
+-- ---------------------------------------------------------------------------
+-- Request Logging
+-- ---------------------------------------------------------------------------
+
+--- Generate a UUID v4
+local function generate_uuid()
+  local template = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'
+  return string.gsub(template, '[xy]', function(c)
+    local v = (c == 'x') and math.random(0, 0xf) or math.random(8, 0xb)
+    return string.format('%x', v)
+  end)
+end
+
+--- Safely serialize provider config for logging
+--- Only logs provider.params (never api_key or headers)
+--- Replaces functions with type metadata
+local function safe_serialize_config(params)
+  if type(params) ~= 'table' then
+    return params
+  end
+
+  local result = {}
+  for key, value in pairs(params) do
+    local value_type = type(value)
+    if value_type == 'function' then
+      result[key] = { __type = 'function' }
+    elseif value_type == 'table' then
+      result[key] = safe_serialize_config(value) -- Recursive
+    elseif value_type == 'string' or value_type == 'number' or value_type == 'boolean' then
+      result[key] = value
+    elseif value_type == 'nil' then
+      -- Skip nil values
+    else
+      -- Thread, userdata, etc.
+      result[key] = { __type = value_type }
+    end
+  end
+  return result
+end
+
 -- ---------------------------------------------------------------------------
 -- Virtual text rendering
 -- ---------------------------------------------------------------------------
@@ -81,10 +122,10 @@ end
 local function extract_context(buf)
   local max_lines = conf:get('max_lines')
   local cursor = vim.api.nvim_win_get_cursor(0) -- {1-indexed row, 0-indexed col}
-  local row = cursor[1] -- 1-indexed
-  local col = cursor[2] -- 0-indexed (bytes)
+  local row = cursor[1]                         -- 1-indexed
+  local col = cursor[2]                         -- 0-indexed (bytes)
 
-  local line_num = row - 1 -- 0-indexed for nvim_buf_get_lines
+  local line_num = row - 1                      -- 0-indexed for nvim_buf_get_lines
 
   local cur_line_list = vim.api.nvim_buf_get_lines(buf, line_num, line_num + 1, false)
   local cur_line = cur_line_list[1] or ''
@@ -145,11 +186,36 @@ function M.trigger()
   local before = ctx.lines_before
   local after = ctx.lines_after
 
+  local request_id = generate_uuid()
+  local logger = require('cmp_ai.logger')
+
+  local start_time
+
+  if logger:is_enabled() then
+    local provider = conf:get('provider')
+    logger:log_request(request_id, {
+      cwd = vim.fn.getcwd(),
+      filename = vim.api.nvim_buf_get_name(0),
+      filetype = vim.bo.filetype,
+      cursor = { line = ctx.cursor[1], col = ctx.cursor[2] },
+      lines_before = before,
+      lines_after = after,
+      provider = provider.name,
+      provider_config = safe_serialize_config(provider.params),
+    })
+  end
+
   vim.api.nvim_exec_autocmds({ 'User' }, {
     pattern = 'CmpAiRequestStarted',
   })
 
   local function on_complete(data)
+    if logger:is_enabled() then
+      logger:log_response(request_id, {
+        response_raw = data,
+        response_time_ms = (os.clock() - start_time) * 1000
+      })
+    end
     -- Stale check
     if my_gen ~= generation then
       return
@@ -196,11 +262,13 @@ function M.trigger()
         }
         context_manager.gather_context(params, function(additional_context)
           if my_gen ~= generation then return end
+          start_time = os.clock()
           local prompt = model_config.prompt(before, after, nil, additional_context)
           current_job = service:complete(prompt, on_complete, model_config)
         end)
       else
         local prompt = model_config.prompt(before, after)
+        start_time = os.clock()
         current_job = service:complete(prompt, on_complete, model_config)
       end
     end)
@@ -216,9 +284,11 @@ function M.trigger()
       }
       context_manager.gather_context(params, function(additional_context)
         if my_gen ~= generation then return end
+        start_time = os.clock()
         current_job = service:complete(before, after, on_complete, additional_context)
       end)
     else
+      start_time = os.clock()
       current_job = service:complete(before, after, on_complete)
     end
   end
