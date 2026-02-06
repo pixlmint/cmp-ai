@@ -1,4 +1,5 @@
 local conf = require('cassandra_ai.config')
+local logger = require('cassandra_ai.logger')
 
 local M = {}
 
@@ -144,8 +145,11 @@ function M.trigger()
 
   local service = conf:get('provider')
   if service == nil then
+    logger.warn('trigger: no provider configured')
     return
   end
+
+  logger.debug('trigger: generation=' .. my_gen .. ' buf=' .. bufnr .. ' ft=' .. ft)
 
   local function do_complete(surround_context)
     if my_gen ~= generation then return end
@@ -177,25 +181,30 @@ function M.trigger()
     })
 
     local function on_complete(data)
+      local elapsed_ms = (os.clock() - start_time) * 1000
       if telemetry:is_enabled() then
         telemetry:log_response(request_id, {
           response_raw = data,
-          response_time_ms = (os.clock() - start_time) * 1000
+          response_time_ms = elapsed_ms,
         })
       end
       -- Stale check
       if my_gen ~= generation then
+        logger.debug('response discarded: stale generation (got=' .. my_gen .. ' current=' .. generation .. ')')
         return
       end
       if not vim.api.nvim_buf_is_valid(bufnr) then
+        logger.debug('response discarded: buffer no longer valid')
         return
       end
       if vim.fn.mode() ~= 'i' then
+        logger.debug('response discarded: no longer in insert mode')
         return
       end
       -- Check cursor hasn't moved
       local cur = vim.api.nvim_win_get_cursor(0)
       if cur[1] ~= cursor_pos[1] or cur[2] ~= cursor_pos[2] then
+        logger.debug('response discarded: cursor moved')
         return
       end
 
@@ -204,9 +213,11 @@ function M.trigger()
       })
 
       if not data or #data == 0 then
+        logger.debug('response empty: no completions returned')
         return
       end
 
+      logger.info(string.format('completion received: %d item(s) in %.0fms', #data, elapsed_ms))
       completions = data
       current_index = 1
       render_ghost_text(completions[current_index])
@@ -320,6 +331,8 @@ function M.accept()
   if not text or text == '' then
     return false
   end
+
+  logger.info('completion accepted (' .. #vim.split(text, '\n', { plain = true }) .. ' lines)')
 
   local row = cursor_pos[1] -- 1-indexed
   local col = cursor_pos[2] -- 0-indexed bytes
