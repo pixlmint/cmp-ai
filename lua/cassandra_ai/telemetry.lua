@@ -1,8 +1,8 @@
---- Logger module for cassandra-ai data collection
+--- Telemetry module for cassandra-ai data collection
 --- Implements fire-and-forget async writes with buffering
 
-local Logger = {}
-Logger.__index = Logger
+local Telemetry = {}
+Telemetry.__index = Telemetry
 
 -- Singleton instance
 local instance = nil
@@ -20,9 +20,9 @@ local buffer = {}
 local write_in_progress = false
 local flush_timer = nil
 
---- Initialize logger with config
+--- Initialize telemetry with config
 --- @param user_config table Configuration options
-function Logger:init(user_config)
+function Telemetry:init(user_config)
   config = vim.tbl_extend('force', default_config, user_config or {})
   buffer = {}
   write_in_progress = false
@@ -37,14 +37,14 @@ end
 
 --- Check if logging is enabled
 --- @return boolean
-function Logger:is_enabled()
+function Telemetry:is_enabled()
   return config.enabled
 end
 
 --- Log a request event
 --- @param request_id string UUID for this request
 --- @param data table Request data (cwd, filename, filetype, cursor, lines_before, lines_after, provider, provider_config)
-function Logger:log_request(request_id, data)
+function Telemetry:log_request(request_id, data)
   if not config.enabled then
     return
   end
@@ -69,7 +69,7 @@ end
 --- Log a response event
 --- @param request_id string UUID for this request
 --- @param data table Response data (response_raw, completions, response_time_ms)
-function Logger:log_response(request_id, data)
+function Telemetry:log_response(request_id, data)
   if not config.enabled then
     return
   end
@@ -89,7 +89,7 @@ end
 --- Log an acceptance event
 --- @param request_id string UUID for this request
 --- @param data table Acceptance data (accepted, accepted_item_label)
-function Logger:log_acceptance(request_id, data)
+function Telemetry:log_acceptance(request_id, data)
   if not config.enabled then
     return
   end
@@ -107,7 +107,7 @@ end
 
 --- Add entry to buffer and flush if needed
 --- @param entry table The log entry to add
-function Logger:_add_to_buffer(entry)
+function Telemetry:_add_to_buffer(entry)
   table.insert(buffer, entry)
 
   if #buffer >= config.buffer_size then
@@ -116,7 +116,7 @@ function Logger:_add_to_buffer(entry)
 end
 
 --- Flush buffer to disk (fire-and-forget async)
-function Logger:flush()
+function Telemetry:flush()
   if not config.enabled or #buffer == 0 then
     return
   end
@@ -182,7 +182,7 @@ function Logger:flush()
 end
 
 --- Synchronous flush for shutdown
-function Logger:shutdown()
+function Telemetry:shutdown()
   if not config.enabled or #buffer == 0 then
     return
   end
@@ -223,7 +223,7 @@ function Logger:shutdown()
 end
 
 --- Ensure data directory exists
-function Logger:_ensure_directory()
+function Telemetry:_ensure_directory()
   local dir = vim.fn.fnamemodify(config.data_file, ':h')
   if vim.fn.isdirectory(dir) == 0 then
     vim.fn.mkdir(dir, 'p')
@@ -231,17 +231,17 @@ function Logger:_ensure_directory()
 end
 
 --- Setup autocmds for shutdown
-function Logger:_setup_autocmds()
+function Telemetry:_setup_autocmds()
   vim.api.nvim_create_autocmd('VimLeavePre', {
     callback = function()
-      Logger:shutdown()
+      Telemetry:shutdown()
     end,
     desc = 'Flush cassandra-ai data collection buffer on exit',
   })
 end
 
 --- Setup periodic flush timer (30s)
-function Logger:_setup_timer()
+function Telemetry:_setup_timer()
   if flush_timer then
     return
   end
@@ -258,7 +258,7 @@ end
 
 -- Return singleton instance
 if not instance then
-  instance = setmetatable({}, Logger)
+  instance = setmetatable({}, Telemetry)
 end
 
 return instance

@@ -86,10 +86,10 @@ function M:setup(params)
     end
   end
 
-  -- Initialize logger if data collection is enabled
+  -- Initialize telemetry if data collection is enabled
   if conf.collect_data then
-    local logger = require('cassandra_ai.logger')
-    logger:init({
+    local telemetry = require('cassandra_ai.telemetry')
+    telemetry:init({
       enabled = true,
       data_file = conf.data_file,
       buffer_size = conf.data_buffer_size,

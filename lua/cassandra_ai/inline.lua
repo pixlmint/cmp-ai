@@ -154,13 +154,13 @@ function M.trigger()
     local after = surround_context.lines_after
 
     local request_id = generate_uuid()
-    local logger = require('cassandra_ai.logger')
+    local telemetry = require('cassandra_ai.telemetry')
 
     local start_time
 
-    if logger:is_enabled() then
+    if telemetry:is_enabled() then
       local provider = conf:get('provider')
-      logger:log_request(request_id, {
+      telemetry:log_request(request_id, {
         cwd = vim.fn.getcwd(),
         filename = vim.api.nvim_buf_get_name(0),
         filetype = vim.bo.filetype,
@@ -177,8 +177,8 @@ function M.trigger()
     })
 
     local function on_complete(data)
-      if logger:is_enabled() then
-        logger:log_response(request_id, {
+      if telemetry:is_enabled() then
+        telemetry:log_response(request_id, {
           response_raw = data,
           response_time_ms = (os.clock() - start_time) * 1000
         })
