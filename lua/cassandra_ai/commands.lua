@@ -317,7 +317,7 @@ function M.setup()
       return
     end
 
-    vim.cmd('edit ' .. vim.fn.fnameescape(log_file))
+    vim.cmd('tabnew | edit ' .. vim.fn.fnameescape(log_file))
   end, {
     nargs = 0,
     desc = 'Open the cassandra-ai log file',
