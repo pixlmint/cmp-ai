@@ -149,7 +149,7 @@ function M.trigger()
     return
   end
 
-  logger.debug('trigger: generation=' .. my_gen .. ' buf=' .. bufnr .. ' ft=' .. ft)
+  logger.info('trigger: generation=' .. my_gen .. ' buf=' .. bufnr .. ' ft=' .. ft)
 
   local function do_complete(surround_context)
     if my_gen ~= generation then return end
@@ -190,21 +190,21 @@ function M.trigger()
       end
       -- Stale check
       if my_gen ~= generation then
-        logger.debug('response discarded: stale generation (got=' .. my_gen .. ' current=' .. generation .. ')')
+        logger.trace('on_complete() -> discarding: stale generation')
         return
       end
       if not vim.api.nvim_buf_is_valid(bufnr) then
-        logger.debug('response discarded: buffer no longer valid')
+        logger.trace('on_complete() -> discarding: buffer invalid')
         return
       end
       if vim.fn.mode() ~= 'i' then
-        logger.debug('response discarded: no longer in insert mode')
+        logger.trace('on_complete() -> discarding: left insert mode')
         return
       end
       -- Check cursor hasn't moved
       local cur = vim.api.nvim_win_get_cursor(0)
       if cur[1] ~= cursor_pos[1] or cur[2] ~= cursor_pos[2] then
-        logger.debug('response discarded: cursor moved')
+        logger.trace('on_complete() -> discarding: cursor moved')
         return
       end
 
@@ -213,7 +213,7 @@ function M.trigger()
       })
 
       if not data or #data == 0 then
-        logger.debug('response empty: no completions returned')
+        logger.trace('on_complete() -> no completions returned')
         return
       end
 
@@ -311,6 +311,7 @@ function M.next()
     return
   end
   current_index = current_index % #completions + 1
+  logger.info('next completion: ' .. current_index .. '/' .. #completions)
   render_ghost_text(completions[current_index])
 end
 
@@ -319,6 +320,7 @@ function M.prev()
     return
   end
   current_index = (current_index - 2) % #completions + 1
+  logger.info('prev completion: ' .. current_index .. '/' .. #completions)
   render_ghost_text(completions[current_index])
 end
 

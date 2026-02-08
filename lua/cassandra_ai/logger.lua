@@ -2,18 +2,19 @@
 local M = {}
 
 local LEVELS = {
-  DEBUG = 1,
-  INFO = 2,
-  WARN = 3,
-  ERROR = 4,
+  TRACE = 1,
+  DEBUG = 2,
+  INFO = 3,
+  WARN = 4,
+  ERROR = 5,
 }
 
-local LEVEL_NAMES = { 'DEBUG', 'INFO', 'WARN', 'ERROR' }
+local LEVEL_NAMES = { 'TRACE', 'DEBUG', 'INFO', 'WARN', 'ERROR' }
 
 local state = {
   initialized = false,
   log_file = nil,
-  log_level = LEVELS.INFO,
+  log_level = LEVELS.WARN,
 }
 
 --- Initialize the logger
@@ -64,6 +65,10 @@ local function write(level, msg)
     f:write(entry)
     f:close()
   end
+end
+
+function M.trace(msg)
+  write(LEVELS.TRACE, msg)
 end
 
 function M.debug(msg)

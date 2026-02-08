@@ -80,7 +80,7 @@ function M.register_provider(provider_config)
   -- Check if provider is available
   if provider_instance:is_available() then
     local name = provider_config.name or provider_instance:get_name()
-    logger.info('context: registered provider "' .. name .. '" (priority=' .. (provider_config.priority or 10) .. ')')
+    logger.debug('context: registered provider "' .. name .. '" (priority=' .. (provider_config.priority or 10) .. ')')
     table.insert(registered_providers, {
       instance = provider_instance,
       priority = provider_config.priority or 10,
@@ -88,7 +88,7 @@ function M.register_provider(provider_config)
     })
   else
     local name = provider_config.name or 'custom'
-    logger.info('context: provider "' .. name .. '" not available in this environment')
+    logger.debug('context: provider "' .. name .. '" not available in this environment')
     vim.notify(
       'cassandra-ai: Context provider "' .. name .. '" is not available in this environment',
       vim.log.levels.DEBUG
@@ -176,7 +176,7 @@ function M.gather_context(params, callback)
     end
   end
 
-  logger.debug('context: gathering from ' .. total .. ' provider(s)')
+  logger.trace('context.gather_context() -> ' .. total .. ' provider(s)')
 
   -- Set timeout
   timeout_timer = vim.fn.timer_start(config.timeout_ms, function()

@@ -64,7 +64,7 @@ function Service:_Request(url, headers, data, cb, args)
 
   args[#args + 1] = url
 
-  logger.debug('HTTP request: ' .. url)
+  logger.trace('Service:_Request() -> ' .. url)
 
   local j = job:new({
     command = 'curl',
@@ -91,7 +91,7 @@ function Service:_Request(url, headers, data, cb, args)
         logger.warn('HTTP response: no valid JSON from ' .. url)
         cb({ { error = 'No Response.' } })
       else
-        logger.debug('HTTP response: ok from ' .. url)
+        logger.trace('Service:_Request() -> response ok from ' .. url)
         cb(json)
       end
     end),

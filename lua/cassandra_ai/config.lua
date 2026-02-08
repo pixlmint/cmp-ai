@@ -30,7 +30,7 @@ local conf = {
 
   -- File logging
   log_file = vim.fn.stdpath('data') .. '/cassandra-ai/cassandra-ai.log',
-  log_level = 'INFO', -- DEBUG | INFO | WARN | ERROR
+  log_level = 'WARN', -- TRACE | DEBUG | INFO | WARN | ERROR
 
   -- Data collection (opt-in)
   collect_data = false,
@@ -75,7 +75,7 @@ function M:setup(params)
     log_level = conf.log_level,
   })
 
-  logger.info('cassandra-ai setup started')
+  logger.trace('config:setup()')
 
   -- Determine the new provider name
   local new_provider_name = type(conf.provider) == 'string' and conf.provider or conf.provider.name
@@ -86,12 +86,12 @@ function M:setup(params)
     if provider_name:lower() ~= 'ollama' then
       vim.notify_once("Going forward, " .. provider_name .. " is no longer maintained by pixlmint/cassandra-ai. Pin your plugin to tag `v1`, or fork the repo to handle maintenance yourself.", vim.log.levels.WARN)
     end
-    logger.info('loading provider: ' .. provider_name)
+    logger.trace('config:setup() -> loading backend: ' .. provider_name:lower())
     local status, provider = pcall(require, 'cassandra_ai.backends.' .. provider_name:lower())
     if status then
       conf.provider = provider:new(conf.provider_options)
       conf.provider.name = provider_name
-      logger.info('provider loaded: ' .. provider_name)
+      logger.debug('provider loaded: ' .. provider_name)
 
       if old_provider_name and old_provider_name ~= provider_name then
         logger.info('switched provider from ' .. old_provider_name .. ' to ' .. provider_name)
@@ -105,7 +105,7 @@ function M:setup(params)
 
   -- Initialize telemetry if data collection is enabled
   if conf.collect_data then
-    logger.info('telemetry enabled, data file: ' .. conf.data_file)
+    logger.debug('telemetry enabled, data file: ' .. conf.data_file)
     local telemetry = require('cassandra_ai.telemetry')
     telemetry:init({
       enabled = true,
@@ -116,12 +116,12 @@ function M:setup(params)
 
   -- Initialize context providers if any are configured
   if conf.context_providers and conf.context_providers.providers and #conf.context_providers.providers > 0 then
-    logger.info('initializing context providers: ' .. #conf.context_providers.providers .. ' configured')
+    logger.debug('initializing context providers: ' .. #conf.context_providers.providers .. ' configured')
     local context_manager = require('cassandra_ai.context')
     context_manager.setup(conf.context_providers)
   end
 
-  logger.info('cassandra-ai setup complete')
+  logger.debug('cassandra-ai setup complete')
 end
 
 function M:get(what)
