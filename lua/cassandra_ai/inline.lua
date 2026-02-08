@@ -117,6 +117,98 @@ local function cancel_debounce()
 end
 
 -- ---------------------------------------------------------------------------
+-- Response post-processing
+-- ---------------------------------------------------------------------------
+
+--- Strip lines from the edges of a completion that overlap with surrounding context.
+--- Some models echo back parts of the before/after text in their response.
+local function strip_context_overlap(text, lines_before, lines_after)
+  local lines = vim.split(text, '\n', { plain = true })
+  if #lines == 0 then return text end
+
+  local before_split = vim.split(lines_before, '\n', { plain = true })
+  local after_split = vim.split(lines_after, '\n', { plain = true })
+
+  local before_set = {}
+  for _, line in ipairs(before_split) do
+    local trimmed = vim.trim(line)
+    if trimmed ~= '' then
+      before_set[trimmed] = true
+    end
+  end
+
+  local after_set = {}
+  for _, line in ipairs(after_split) do
+    local trimmed = vim.trim(line)
+    if trimmed ~= '' then
+      after_set[trimmed] = true
+    end
+  end
+
+  -- Strip leading lines that appear in before context
+  local start_strip = 0
+  for i = 1, #lines do
+    local trimmed = vim.trim(lines[i])
+    if trimmed ~= '' and before_set[trimmed] then
+      start_strip = i
+    else
+      break
+    end
+  end
+
+  -- Strip trailing lines that appear in after context.
+  -- Allow short trailing lines (e.g. }, ), ]) that aren't in after_set
+  -- to be bridged over, since the after context may have been truncated.
+  local tail_skip = 0
+  for i = #lines, start_strip + 1, -1 do
+    local trimmed = vim.trim(lines[i])
+    if trimmed == '' or after_set[trimmed] then
+      break
+    elseif #trimmed <= 2 then
+      tail_skip = tail_skip + 1
+      if tail_skip > 2 then
+        tail_skip = 0
+        break
+      end
+    else
+      tail_skip = 0
+      break
+    end
+  end
+
+  local end_strip = 0
+  for i = #lines - tail_skip, start_strip + 1, -1 do
+    local trimmed = vim.trim(lines[i])
+    if trimmed == '' or after_set[trimmed] then
+      end_strip = end_strip + 1
+    else
+      break
+    end
+  end
+
+  -- Only count tail_skip if we found actual after-context matches
+  if end_strip > 0 then
+    end_strip = end_strip + tail_skip
+  end
+
+  if start_strip == 0 and end_strip == 0 then
+    return text
+  end
+
+  local result = {}
+  for i = start_strip + 1, #lines - end_strip do
+    result[#result + 1] = lines[i]
+  end
+
+  -- Don't strip everything - return original if nothing would remain
+  if #result == 0 then
+    return text
+  end
+
+  return table.concat(result, '\n')
+end
+
+-- ---------------------------------------------------------------------------
 -- Main trigger
 -- ---------------------------------------------------------------------------
 
@@ -215,6 +307,25 @@ function M.trigger()
       if not data or #data == 0 then
         logger.trace('on_complete() -> no completions returned')
         return
+      end
+
+      -- Strip markdown code fences some providers wrap responses in
+      for i, item in ipairs(data) do
+        local lines = vim.split(item, '\n', { plain = true })
+        if #lines >= 2 then
+          if lines[1]:match('^```') then
+            table.remove(lines, 1)
+          end
+          if #lines > 0 and lines[#lines]:match('^```') then
+            table.remove(lines, #lines)
+          end
+          data[i] = table.concat(lines, '\n')
+        end
+      end
+
+      -- Strip lines at edges that overlap with the surrounding context
+      for i, item in ipairs(data) do
+        data[i] = strip_context_overlap(item, before, after)
       end
 
       logger.info(string.format('completion received: %d item(s) in %.0fms', #data, elapsed_ms))
