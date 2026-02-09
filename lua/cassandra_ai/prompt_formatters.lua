@@ -44,6 +44,14 @@ Your answer should be:
   table.insert(messages, { role = 'system', content = system })
   table.insert(messages, { role = 'user', content = user_message })
 
+  -- Include rejected completions as conversation history so the model avoids repeating them
+  if opts.rejected_completions and #opts.rejected_completions > 0 then
+    for _, rejected in ipairs(opts.rejected_completions) do
+      table.insert(messages, { role = 'assistant', content = rejected })
+      table.insert(messages, { role = 'user', content = 'That completion was rejected. Please suggest a different completion for the same position.' })
+    end
+  end
+
   return { mode = 'chat', messages = messages }
 end
 

@@ -14,6 +14,7 @@ local cursor_pos = nil
 local bufnr = nil
 local internal_move = false
 local current_request_id = nil
+local pending_rejected = {}
 
 local ns = vim.api.nvim_create_namespace('cassandra_ai_inline')
 
@@ -240,6 +241,9 @@ function M.trigger()
   current_index = 0
   current_request_id = nil
 
+  local rejected = pending_rejected
+  pending_rejected = {}
+
   local service = conf:get('provider')
   if service == nil then
     logger.warn('trigger: no provider configured')
@@ -348,7 +352,7 @@ function M.trigger()
           return
         end
         start_time = os.clock()
-        local prompt_data = fmt(before, after, { filetype = ft }, additional_context)
+        local prompt_data = fmt(before, after, { filetype = ft, rejected_completions = rejected }, additional_context)
 
         if telemetry:is_enabled() then
           local provider = conf:get('provider')
@@ -429,6 +433,7 @@ function M.dismiss()
   completions = {}
   current_index = 0
   current_request_id = nil
+  pending_rejected = {}
 end
 
 function M.next()
@@ -447,6 +452,29 @@ function M.prev()
   current_index = (current_index - 2) % #completions + 1
   logger.info('prev completion: ' .. current_index .. '/' .. #completions)
   render_ghost_text(completions[current_index])
+end
+
+function M.regenerate()
+  if not is_visible or current_index == 0 or #completions == 0 then
+    return
+  end
+
+  local text = completions[current_index]
+  if not text or text == '' then
+    return
+  end
+
+  -- Log dismissal in telemetry
+  if current_request_id then
+    local telemetry = require('cassandra_ai.telemetry')
+    if telemetry:is_enabled() then
+      telemetry:log_acceptance(current_request_id, { accepted = false })
+    end
+  end
+
+  logger.info('regenerate: rejecting completion and requesting new one')
+  table.insert(pending_rejected, text)
+  M.trigger()
 end
 
 function M.accept()
@@ -615,6 +643,12 @@ local function setup_keymaps()
     vim.keymap.set('i', km.prev, function()
       M.prev()
     end, { noremap = true, silent = true, desc = 'Previous AI completion' })
+  end
+
+  if km.regenerate then
+    vim.keymap.set('i', km.regenerate, function()
+      M.regenerate()
+    end, { noremap = true, silent = true, desc = 'Regenerate AI completion' })
   end
 end
 

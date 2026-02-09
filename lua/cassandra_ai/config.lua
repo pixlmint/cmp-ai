@@ -58,6 +58,7 @@ local conf = {
       dismiss = '<C-]>',
       next = '<M-]>',
       prev = '<M-[>',
+      regenerate = '<C-<>',
     },
   },
 }
