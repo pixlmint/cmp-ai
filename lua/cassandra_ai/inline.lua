@@ -320,6 +320,10 @@ function M.trigger()
         if #lines >= 2 then
           if lines[1]:match('^```') then
             table.remove(lines, 1)
+            -- Remove leading whitespace from the next line if we removed a code fence
+            if #lines > 0 then
+              lines[1] = lines[1]:gsub('^%s+', '')
+            end
           end
           if #lines > 0 and lines[#lines]:match('^```') then
             table.remove(lines, #lines)
