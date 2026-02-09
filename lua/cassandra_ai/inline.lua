@@ -13,6 +13,7 @@ local is_visible = false
 local cursor_pos = nil
 local bufnr = nil
 local internal_move = false
+local current_request_id = nil
 
 local ns = vim.api.nvim_create_namespace('cassandra_ai_inline')
 
@@ -237,6 +238,7 @@ function M.trigger()
   cursor_pos = vim.api.nvim_win_get_cursor(0)
   completions = {}
   current_index = 0
+  current_request_id = nil
 
   local service = conf:get('provider')
   if service == nil then
@@ -255,6 +257,7 @@ function M.trigger()
     local after = surround_context.lines_after
 
     local request_id = generate_uuid()
+    current_request_id = request_id
     local telemetry = require('cassandra_ai.telemetry')
 
     local start_time
@@ -414,11 +417,18 @@ function M.is_visible()
 end
 
 function M.dismiss()
+  if is_visible and current_request_id then
+    local telemetry = require('cassandra_ai.telemetry')
+    if telemetry:is_enabled() then
+      telemetry:log_acceptance(current_request_id, { accepted = false })
+    end
+  end
   cancel_request()
   cancel_debounce()
   clear_ghost_text()
   completions = {}
   current_index = 0
+  current_request_id = nil
 end
 
 function M.next()
@@ -491,6 +501,7 @@ function M.accept()
 
   completions = {}
   current_index = 0
+  current_request_id = nil
 
   vim.schedule(function()
     internal_move = false
