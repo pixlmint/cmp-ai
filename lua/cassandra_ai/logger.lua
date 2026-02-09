@@ -70,11 +70,10 @@ local function create_log_function(level, notify_level)
     if not state.initialized or level < state.log_level then
       return
     end
-    if notify_level ~= nil then
-      vim.notify(msg, notify_level)
-    end
-    if level == LEVELS.TRACE then
+    if notify_level == nil then
       print(msg)
+    else
+      vim.notify(msg, notify_level)
     end
     write(level, msg)
   end
@@ -82,9 +81,9 @@ end
 
 M.trace = create_log_function(LEVELS.TRACE)
 
-M.debug = create_log_function(LEVELS.DEBUG, vim.log.levels.DEBUG)
+M.debug = create_log_function(LEVELS.DEBUG)
 
-M.info = create_log_function(LEVELS.INFO, vim.log.levels.INFO)
+M.info = create_log_function(LEVELS.INFO)
 
 M.warn = create_log_function(LEVELS.WARN, vim.log.levels.WARN)
 
