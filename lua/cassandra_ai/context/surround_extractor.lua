@@ -104,10 +104,15 @@ function M.smart_extractor(ctx)
   local current_context = ctx.current_context
   logger.trace('smart_extractor() -> context_type=' .. tostring(current_context))
   local rng
+  local line_0 = ctx.cursor.line - 1
   if current_context == 'impl' then
     rng = locate_function(ctx)
     -- Look for comment above the function; rng[1] is 0-indexed, convert to 1-indexed for ctx
     rng = combine_ranges(rng, locate_comment({ bufnr = ctx.bufnr, cursor = { line = rng[1], col = rng[2] } }))
+    if rng and #rng > 0 and (line_0 - rng[1] < 5 or rng[4] - line_0 < 5) then
+      logger.trace('smart_extractor() -> impl range too narrow, falling back to simple_extractor()')
+      return M.simple_extractor(ctx)
+    end
   elseif current_context == 'comment_func' then
     rng = locate_comment(ctx)
     -- Look for function below the comment; rng[4] is 0-indexed end row
@@ -123,7 +128,6 @@ function M.smart_extractor(ctx)
     return M.simple_extractor(ctx)
   else
     logger.trace(string.format('smart_extractor() -> extracting lines %d–%d', rng[1], rng[4]))
-    local line_0 = ctx.cursor.line - 1
     return extract_lines(rng[1], rng[4], line_0, ctx.cursor.col, ctx.bufnr)
   end
 end
