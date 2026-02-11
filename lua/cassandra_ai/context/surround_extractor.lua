@@ -107,16 +107,20 @@ function M.smart_extractor(ctx)
   local line_0 = ctx.cursor.line - 1
   if current_context == 'impl' then
     rng = locate_function(ctx)
-    -- Look for comment above the function; rng[1] is 0-indexed, convert to 1-indexed for ctx
-    rng = combine_ranges(rng, locate_comment({ bufnr = ctx.bufnr, cursor = { line = rng[1], col = rng[2] } }))
-    if rng and #rng > 0 and (line_0 - rng[1] < 5 or rng[4] - line_0 < 5) then
-      logger.trace('smart_extractor() -> impl range too narrow, falling back to simple_extractor()')
-      return M.simple_extractor(ctx)
+    if rng and #rng > 0 then
+      -- Look for comment above the function; rng[1] is 0-indexed, convert to 1-indexed for ctx
+      rng = combine_ranges(rng, locate_comment({ bufnr = ctx.bufnr, cursor = { line = rng[1], col = rng[2] } }))
+      if line_0 - rng[1] < 5 or rng[4] - line_0 < 5 then
+        logger.trace('smart_extractor() -> impl range too narrow, falling back to simple_extractor()')
+        return M.simple_extractor(ctx)
+      end
     end
   elseif current_context == 'comment_func' then
     rng = locate_comment(ctx)
-    -- Look for function below the comment; rng[4] is 0-indexed end row
-    rng = combine_ranges(rng, locate_function({ bufnr = ctx.bufnr, cursor = { line = rng[4] + 3, col = rng[2] } }))
+    if rng and #rng > 0 then
+      -- Look for function below the comment; rng[4] is 0-indexed end row
+      rng = combine_ranges(rng, locate_function({ bufnr = ctx.bufnr, cursor = { line = rng[4] + 3, col = rng[2] } }))
+    end
   elseif current_context == 'init' then
     local line_count = api.nvim_buf_line_count(ctx.bufnr)
     local last_line_list = api.nvim_buf_get_lines(ctx.bufnr, line_count - 1, line_count, false)
