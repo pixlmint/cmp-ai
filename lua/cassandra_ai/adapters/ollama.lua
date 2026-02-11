@@ -7,7 +7,7 @@ function Ollama:new(o)
   o = o or {}
   setmetatable(o, self)
   self.__index = self
-  self.params = vim.tbl_deep_extend('keep', o or {}, {
+  self.params = vim.tbl_deep_extend('force', {
     base_url = 'http://127.0.0.1:11434',
     generate_endpoint = '/api/generate',
     chat_endpoint = '/api/chat',
@@ -15,16 +15,7 @@ function Ollama:new(o)
     default_model = 'codellama:7b-code',
     model_configs = {},
     headers = {},
-  })
-
-  -- Migrate legacy 'prompt' key to 'formatter' in model_configs
-  for name, cfg in pairs(self.params.model_configs) do
-    if cfg.prompt and not cfg.formatter then
-      logger.warn('ollama: model_configs["' .. name .. '"].prompt is deprecated, use .formatter instead')
-      cfg.formatter = cfg.prompt
-      cfg.prompt = nil
-    end
-  end
+  }, o or {})
 
   if self.params.auto_unload then
     vim.api.nvim_create_autocmd('VimLeave', {

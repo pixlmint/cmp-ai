@@ -16,29 +16,23 @@ local conf = {
   extra_context_providers = {},
   provider = 'Ollama',
   provider_options = {},
-  -- Prompt formatter: 'chat', 'fim', or a function(before, after, opts, ctx) -> PromptData
-  -- nil means adapter/model decides
-  formatter = nil,
-  notify = true,
-  notify_callback = function(msg)
-    vim.notify(msg)
-  end,
+
   ignored_file_types = {
     -- default is not to ignore
     -- uncomment to ignore in lua:
     -- lua = true
   },
 
-  log_errors = true,
+  logging = {
+    level = 'WARN',  -- TRACE | DEBUG | INFO | WARN | ERROR (set to nil to disable logging)
+    file = vim.fn.stdpath('data') .. '/cassandra-ai/cassandra-ai.log',
+  },
 
-  -- File logging
-  log_file = vim.fn.stdpath('data') .. '/cassandra-ai/cassandra-ai.log',
-  log_level = 'WARN', -- TRACE | DEBUG | INFO | WARN | ERROR
-
-  -- Data collection (opt-in)
-  collect_data = false,
-  data_file = vim.fn.stdpath('data') .. '/cassandra-ai/completions.jsonl',
-  data_buffer_size = 50,
+  telemetry = {
+    enabled = false,
+    file = vim.fn.stdpath('data') .. '/cassandra-ai/completions.jsonl',
+    buffer_size = 50,
+  },
 
   -- Context providers configuration
   context_providers = {
@@ -63,32 +57,6 @@ local conf = {
   },
 }
 
---- Resolve a formatter value (string or function) to an actual function
---- @param fmt string|function|nil
---- @return function|nil
-local function resolve_formatter(fmt)
-  if fmt == nil then
-    return nil
-  end
-  if type(fmt) == 'function' then
-    return fmt
-  end
-  if type(fmt) == 'string' then
-    local formatters = require('cassandra_ai.prompt_formatters')
-    if formatters[fmt] then
-      return formatters[fmt]
-    end
-    -- Also check the legacy .formatters table
-    if formatters.formatters[fmt] then
-      return formatters.formatters[fmt]
-    end
-    local logger = require('cassandra_ai.logger')
-    logger.warn('config: unknown formatter "' .. fmt .. '", falling back to nil')
-    return nil
-  end
-  return nil
-end
-
 function M:setup(params)
   params = params or {}
 
@@ -103,14 +71,13 @@ function M:setup(params)
   -- Initialize logger first so other setup steps can log
   local logger = require('cassandra_ai.logger')
   logger.init({
-    log_file = conf.log_file,
-    log_level = conf.log_level,
+    log_file = conf.logging.file,
+    log_level = conf.logging.level,
   })
 
   logger.trace('config:setup()')
 
-  -- Resolve formatter string to function
-  conf.formatter = resolve_formatter(conf.formatter)
+  require('cassandra_ai.inline').setup(conf.inline)
 
   -- Determine the new provider name
   local new_provider_name = type(conf.provider) == 'string' and conf.provider or conf.provider.name
@@ -119,11 +86,7 @@ function M:setup(params)
   if type(conf.provider) == 'string' or (old_provider_name and old_provider_name ~= new_provider_name) then
     local provider_name = type(conf.provider) == 'string' and conf.provider:lower() or conf.provider.name:lower()
     logger.trace('config:setup() -> loading adapter: ' .. provider_name)
-    -- Try adapters/ first, fall back to backends/ for backward compat
     local status, provider = pcall(require, 'cassandra_ai.adapters.' .. provider_name)
-    if not status then
-      status, provider = pcall(require, 'cassandra_ai.backends.' .. provider_name)
-    end
     if status then
       conf.provider = provider:new(conf.provider_options)
       conf.provider.name = provider_name
@@ -137,14 +100,27 @@ function M:setup(params)
     end
   end
 
+  if conf.provider_options and conf.provider_options.model_configs then
+    local formatters = require('cassandra_ai.prompt_formatters')
+    for _, model_params in pairs(conf.provider_options.model_configs) do
+      if model_params.formatter and type(model_params.formatter) == 'string' then
+        if formatters[model_params.formatter] == nil then
+          logger.error("Unknown formatter: " .. model_params.formatter)
+        else
+          model_params.formatter = formatters[model_params.formatter]
+        end
+      end
+    end
+  end
+
   -- Initialize telemetry if data collection is enabled
-  if conf.collect_data then
-    logger.debug('telemetry enabled, data file: ' .. conf.data_file)
+  if conf.telemetry.enabled then
+    logger.debug('telemetry enabled, data file: ' .. conf.telemetry.file)
     local telemetry = require('cassandra_ai.telemetry')
     telemetry:init({
       enabled = true,
-      data_file = conf.data_file,
-      buffer_size = conf.data_buffer_size,
+      data_file = conf.telemetry.file,
+      buffer_size = conf.telemetry.buffer_size,
     })
   end
 

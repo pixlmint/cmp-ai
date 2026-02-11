@@ -345,6 +345,13 @@ function M.trigger()
       end
 
       local fmt = (model_info and model_info.formatter) or conf:get('formatter') or formatters.fim
+      if type(fmt) == 'string' then
+        if formatters[fmt] then
+          return formatters[fmt]
+        end
+        logger.warn('config: unknown formatter "' .. fmt .. '", falling back to nil')
+        return
+      end
       local supports_context = (fmt == formatters.chat)
 
       local function do_request(additional_context)
@@ -657,14 +664,9 @@ end
 -- ---------------------------------------------------------------------------
 
 function M.setup(opts)
-  opts = opts or {}
-
-  -- Pass all opts to config (inline is deep-merged there)
-  conf:setup(opts)
-
+  print("inline setup called")
   -- Define highlight group
-  local ic = conf:get('inline')
-  vim.api.nvim_set_hl(0, 'CassandraAiInline', { link = ic.highlight, default = true })
+  vim.api.nvim_set_hl(0, 'CassandraAiInline', { link = opts.highlight, default = true })
 
   setup_autocmds()
   setup_keymaps()

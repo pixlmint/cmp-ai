@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-`cassandra-ai` is a Neovim plugin that provides AI-powered inline code completion using ghost text (virtual text extmarks). Named after the tragic Trojan priestess Cassandra. It's a general-purpose AI completion source adapted to REST APIs supporting remote code completion. Only the Ollama backend is actively maintained; all other backends (OpenAI, Claude, Codestral, HuggingFace, Tabby, OpenWebUI) are deprecated.
+`cassandra-ai` is a Neovim plugin that provides AI-powered inline code completion using ghost text (virtual text extmarks). Named after the tragic Trojan priestess Cassandra. It's a general-purpose AI completion source adapted to REST APIs supporting remote code completion.
 
 ## Code Formatting
 
@@ -42,23 +42,23 @@ Tests use `mini.test` (not plenary busted). Test files follow the pattern `tests
 
 **Generation counter** (`inline.lua`): A monotonic counter incremented on each trigger. Every async callback checks `if my_gen ~= generation then return end` to discard responses from superseded requests.
 
-**Provider interface**: All backends inherit from `requests.lua` Service class, implement `:new(o, params)` and `:complete(lines_before, lines_after, cb, additional_context)`, return a `plenary.job` handle for cancellation.
+**Provider interface**: All adapters inherit from `requests.lua` Service class, implement `:new(o, params)` and `:complete(lines_before, lines_after, cb, additional_context)`, return a `plenary.job` handle for cancellation.
 
 **Context provider interface**: Providers in `context/` inherit from `base.lua` BaseContextProvider, implement `:get_context(params, callback)`, `:is_available()`. The context manager (`context/init.lua`) gathers from all providers in parallel with configurable timeout, then merges results.
 
-**Config singleton**: `config.lua` stores state in a local `conf` table, dynamically loads backends via `require('cassandra_ai.backends.' .. provider_name)`, only reinitializes when provider changes.
+**Config singleton**: `config.lua` stores state in a local `conf` table, dynamically loads adapters via `require('cassandra_ai.adapters.' .. provider_name)`, only reinitializes when provider changes. Configuration is now structured with nested `logging` and `telemetry` tables. The setup flow starts in `init.lua` which calls `config:setup()`, which in turn initializes the inline module.
 
 ### Core Components
 
-1. **Entry Point** (`lua/cassandra_ai/init.lua`): Calls `inline.setup()` and registers commands
+1. **Entry Point** (`lua/cassandra_ai/init.lua`): Calls `config:setup()` which initializes inline module and registers commands
 2. **Inline Completion** (`lua/cassandra_ai/inline.lua`): Core ghost text engine - trigger, render, accept/dismiss/navigate completions
 3. **Configuration** (`lua/cassandra_ai/config.lua`): Singleton config with dynamic provider loading
-4. **Backends** (`lua/cassandra_ai/backends/*.lua`): Provider implementations. Ollama has special model management (`get_model()` queries `/api/ps` for loaded models)
+4. **Adapters** (`lua/cassandra_ai/adapters/*.lua`): Provider implementations. Ollama has special model management (`get_model()` queries `/api/ps` for loaded models)
 5. **Requests** (`lua/cassandra_ai/requests.lua`): Base HTTP class using curl via `plenary.job`, writes JSON to temp files
-6. **Prompt Formatters** (`lua/cassandra_ai/prompt_formatters.lua`): FIM token strategies (`general_ai`, `ollama_code`, `santacoder`, `codestral`, `fim`)
+6. **Prompt Formatters** (`lua/cassandra_ai/prompt_formatters.lua`): FIM token strategies (`general_ai`, `ollama_code`, `santacoder`, `codestral`, `fim`, `chat`)
 7. **Context Providers** (`lua/cassandra_ai/context/`): LSP definitions, treesitter nodes, diagnostics, buffer content
 8. **Commands** (`lua/cassandra_ai/commands.lua`): `:Cassy` command tree with subcommands for context, log, config
-9. **Logger** (`lua/cassandra_ai/logger.lua`): File-based logging with threshold levels
+9. **Logger** (`lua/cassandra_ai/logger.lua`): File-based logging with threshold levels (can be disabled by setting level to nil)
 10. **Telemetry** (`lua/cassandra_ai/telemetry.lua`): Opt-in data collection to JSONL with async buffered writes
 
 ### User Commands

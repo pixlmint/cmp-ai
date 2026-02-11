@@ -66,7 +66,7 @@ end
 
 local function create_log_function(level, notify_level)
   return function(msg)
-    if not state.initialized or level < state.log_level then
+    if not state.initialized or state.log_level == nil or level < state.log_level then
       return
     end
     if notify_level == nil then
