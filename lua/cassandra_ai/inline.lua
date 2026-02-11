@@ -16,6 +16,12 @@ local internal_move = false
 local current_request_id = nil
 local pending_rejected = {}
 
+local auto_triggered = false
+local pending_validation = nil -- { completions, trigger_pos, trigger_bufnr, trigger_line_text }
+local validation_idle_timer = nil
+
+local validate_or_defer, show_validated_completion, reset_validation_idle_timer
+
 local ns = vim.api.nvim_create_namespace('cassandra_ai_inline')
 
 -- ---------------------------------------------------------------------------
@@ -214,10 +220,144 @@ local function strip_context_overlap(text, lines_before, lines_after)
 end
 
 -- ---------------------------------------------------------------------------
+-- Deferred validation
+-- ---------------------------------------------------------------------------
+
+local function cancel_validation_timer()
+  if validation_idle_timer then
+    validation_idle_timer:stop()
+  end
+end
+
+local function clear_validation_state()
+  auto_triggered = false
+  pending_validation = nil
+  cancel_validation_timer()
+end
+
+--- Get text typed since the trigger position by comparing current buffer state.
+--- Returns nil if cursor moved to a different line or backward past trigger column.
+local function compute_typed_since_trigger(pv)
+  local cur = vim.api.nvim_win_get_cursor(0)
+  if cur[1] ~= pv.trigger_pos[1] then
+    return nil
+  end
+  if cur[2] < pv.trigger_pos[2] then
+    return nil
+  end
+  local line = vim.api.nvim_buf_get_lines(pv.trigger_bufnr, cur[1] - 1, cur[1], false)[1] or ''
+  return line:sub(pv.trigger_pos[2] + 1, cur[2])
+end
+
+--- Find the number of characters the user must type before we show the completion.
+--- Returns nil if completion has no space (fall back to idle timer).
+local function find_validation_threshold(text)
+  local space_pos = text:find('%s')
+  if not space_pos then
+    return nil
+  end
+  local next_word_match = conf:get('inline').next_word_match or 1
+  return space_pos + next_word_match
+end
+
+--- Trim the typed prefix from all completion candidates, filter out empty results.
+local function trim_completions(comps, prefix)
+  local result = {}
+  for _, c in ipairs(comps) do
+    if c:sub(1, #prefix) == prefix then
+      local trimmed = c:sub(#prefix + 1)
+      if trimmed ~= '' then
+        result[#result + 1] = trimmed
+      end
+    end
+  end
+  return result
+end
+
+show_validated_completion = function(pv, typed)
+  local trimmed = trim_completions(pv.completions, typed)
+  if #trimmed == 0 then
+    logger.trace('deferred: all completions empty after trimming')
+    clear_validation_state()
+    return
+  end
+
+  local cur = vim.api.nvim_win_get_cursor(0)
+  cursor_pos = cur
+  completions = trimmed
+  current_index = 1
+  clear_validation_state()
+  render_ghost_text(completions[current_index])
+end
+
+validate_or_defer = function()
+  local pv = pending_validation
+  if not pv then
+    return
+  end
+
+  local typed = compute_typed_since_trigger(pv)
+  if typed == nil then
+    logger.trace('deferred: cursor moved off trigger line, discarding')
+    clear_validation_state()
+    return
+  end
+
+  -- Check that what the user typed is a prefix of at least one completion
+  local has_match = false
+  for _, c in ipairs(pv.completions) do
+    if c:sub(1, #typed) == typed then
+      has_match = true
+      break
+    end
+  end
+
+  if not has_match then
+    logger.trace('deferred: typed "' .. typed .. '" mismatches all completions, discarding')
+    clear_validation_state()
+    return
+  end
+
+  -- Check if past the validation threshold
+  local threshold = find_validation_threshold(pv.completions[1])
+  if threshold and #typed >= threshold then
+    logger.info('deferred: threshold reached (' .. #typed .. '>=' .. threshold .. '), showing completion')
+    show_validated_completion(pv, typed)
+    return
+  end
+
+  -- Not enough typed yet — (re)start idle timer
+  reset_validation_idle_timer()
+end
+
+reset_validation_idle_timer = function()
+  cancel_validation_timer()
+  if not validation_idle_timer then
+    validation_idle_timer = vim.uv.new_timer()
+  end
+  local idle_ms = conf:get('inline').deferred_idle_ms or 1000
+  validation_idle_timer:start(
+    idle_ms,
+    0,
+    vim.schedule_wrap(function()
+      local pv = pending_validation
+      if not pv then
+        return
+      end
+      local typed = compute_typed_since_trigger(pv) or ''
+      logger.info('deferred: idle timer fired, showing completion')
+      show_validated_completion(pv, typed)
+    end)
+  )
+end
+
+-- ---------------------------------------------------------------------------
 -- Main trigger
 -- ---------------------------------------------------------------------------
 
-function M.trigger()
+function M.trigger(opts)
+  opts = opts or {}
+
   -- Bail if not insert mode
   if vim.fn.mode() ~= 'i' then
     return
@@ -231,9 +371,11 @@ function M.trigger()
   cancel_request()
   cancel_debounce()
   clear_ghost_text()
+  clear_validation_state()
 
   generation = generation + 1
   local my_gen = generation
+  auto_triggered = opts.auto or false
 
   bufnr = vim.api.nvim_get_current_buf()
   cursor_pos = vim.api.nvim_win_get_cursor(0)
@@ -271,6 +413,7 @@ function M.trigger()
     })
 
     local function on_complete(data)
+      current_job = nil
       local elapsed_ms = (os.clock() - start_time) * 1000
       if telemetry:is_enabled() then
         telemetry:log_response(request_id, {
@@ -285,17 +428,32 @@ function M.trigger()
       end
       if not vim.api.nvim_buf_is_valid(bufnr) then
         logger.trace('on_complete() -> discarding: buffer invalid')
+        clear_validation_state()
         return
       end
       if vim.fn.mode() ~= 'i' then
         logger.trace('on_complete() -> discarding: left insert mode')
+        clear_validation_state()
         return
       end
-      -- Check cursor hasn't moved
+
       local cur = vim.api.nvim_win_get_cursor(0)
-      if cur[1] ~= cursor_pos[1] or cur[2] ~= cursor_pos[2] then
-        logger.trace('on_complete() -> discarding: cursor moved')
-        return
+      local ic = conf:get('inline')
+      local use_deferred = auto_triggered and ic.deferred_validation
+
+      if use_deferred then
+        -- For auto-triggered with deferred validation: only require same line
+        if cur[1] ~= cursor_pos[1] then
+          logger.trace('on_complete() -> discarding: cursor moved to different line')
+          clear_validation_state()
+          return
+        end
+      else
+        -- Manual trigger or deferred disabled: require exact cursor match
+        if cur[1] ~= cursor_pos[1] or cur[2] ~= cursor_pos[2] then
+          logger.trace('on_complete() -> discarding: cursor moved')
+          return
+        end
       end
 
       vim.api.nvim_exec_autocmds({ 'User' }, {
@@ -304,6 +462,7 @@ function M.trigger()
 
       if not data or #data == 0 then
         logger.trace('on_complete() -> no completions returned')
+        clear_validation_state()
         return
       end
 
@@ -331,9 +490,22 @@ function M.trigger()
       end
 
       logger.info(string.format('completion received: %d item(s) in %.0fms', #data, elapsed_ms))
-      completions = data
-      current_index = 1
-      render_ghost_text(completions[current_index])
+
+      if use_deferred then
+        -- Store for validation instead of rendering immediately
+        pending_validation = {
+          completions = data,
+          trigger_pos = cursor_pos,
+          trigger_bufnr = bufnr,
+          trigger_line_text = vim.api.nvim_buf_get_lines(bufnr, cursor_pos[1] - 1, cursor_pos[1], false)[1] or '',
+        }
+        logger.trace('on_complete() -> deferred: stored ' .. #data .. ' completion(s) for validation')
+        validate_or_defer()
+      else
+        completions = data
+        current_index = 1
+        render_ghost_text(completions[current_index])
+      end
     end
 
     local context_manager = require('cassandra_ai.context')
@@ -437,6 +609,7 @@ function M.dismiss()
   cancel_request()
   cancel_debounce()
   clear_ghost_text()
+  clear_validation_state()
   completions = {}
   current_index = 0
   current_request_id = nil
@@ -550,6 +723,9 @@ end
 -- ---------------------------------------------------------------------------
 
 local function debounced_trigger()
+  if auto_triggered then
+    return
+  end
   cancel_debounce()
   local ic = conf:get('inline')
   if not ic.auto_trigger then
@@ -562,7 +738,7 @@ local function debounced_trigger()
     ic.debounce_ms,
     0,
     vim.schedule_wrap(function()
-      M.trigger()
+      M.trigger({ auto = true })
     end)
   )
 end
@@ -578,6 +754,10 @@ local function setup_autocmds()
     group = group,
     callback = function()
       if internal_move then
+        return
+      end
+      if pending_validation then
+        validate_or_defer()
         return
       end
       if is_visible and cursor_pos then
