@@ -62,7 +62,11 @@ end
 --- @param additional_context? string
 --- @return PromptData
 M.fim = function(lines_before, lines_after, opts, additional_context)
-  return { mode = 'fim', prefix = lines_before, suffix = lines_after }
+  local prefix = lines_before
+  if additional_context ~= nil then
+    prefix = additional_context .. '\n' .. lines_before
+  end
+  return { mode = 'fim', prefix = prefix, suffix = lines_after }
 end
 
 -- Backward-compatible formatters table with deprecation warnings
