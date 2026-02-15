@@ -42,6 +42,19 @@ local conf = {
     timeout_ms = 500,
   },
 
+  -- FIM context server configuration
+  fimcontextserver = {
+    enabled = false,
+    timeout_ms = 5000,
+    python = {
+      env_manager = nil, -- 'uv' | 'pip' | 'conda' | nil (auto-detect)
+      python_path = nil, -- skip venv entirely, use this python
+    },
+  },
+
+  -- Per-project configuration overrides (keyed by project root path)
+  projects = {},
+
   -- Inline completion configuration (managed by inline.lua)
   inline = {
     debounce_ms = 150,
@@ -132,6 +145,22 @@ function M:setup(params)
     logger.debug('initializing context providers: ' .. #conf.context_providers.providers .. ' configured')
     local context_manager = require('cassandra_ai.context')
     context_manager.setup(conf.context_providers)
+  end
+
+  -- Auto-register fimcontextserver context provider if enabled
+  if conf.fimcontextserver and conf.fimcontextserver.enabled then
+    local context_manager = require('cassandra_ai.context')
+    local has_it = false
+    for _, p in ipairs(conf.context_providers.providers or {}) do
+      if (type(p) == 'string' and p == 'fimcontextserver') or (type(p) == 'table' and p.name == 'fimcontextserver') then
+        has_it = true
+        break
+      end
+    end
+    if not has_it then
+      logger.debug('auto-registering fimcontextserver context provider')
+      context_manager.register_provider({ name = 'fimcontextserver', opts = conf.fimcontextserver })
+    end
   end
 
   logger.debug('cassandra-ai setup complete')

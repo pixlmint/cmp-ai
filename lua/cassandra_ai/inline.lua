@@ -504,7 +504,7 @@ end
 --- Gather additional context (if enabled) and dispatch the request.
 local function gather_and_dispatch(req, service, fmt, model_info)
   local context_manager = require('cassandra_ai.context')
-  local supports_context = (fmt == require('cassandra_ai.prompt_formatters').chat)
+  local supports_context = true
 
   if context_manager.is_enabled() and supports_context then
     logger.trace('gather_and_dispatch() -> collecting context')
@@ -603,6 +603,16 @@ function M.trigger(opts)
     service:resolve_model(function(model_info)
       if req.gen ~= generation then
         return
+      end
+      -- Per-project model override via .cassandra.json or plugin config
+      local project = require('cassandra_ai.fimcontextserver.project')
+      local filepath = vim.api.nvim_buf_get_name(bufnr)
+      local root = project.get_project_root(filepath)
+      if root then
+        local proj_conf = project.get_config(root)
+        if proj_conf and proj_conf.model then
+          model_info = vim.tbl_extend('force', model_info or {}, { model = proj_conf.model })
+        end
       end
       local fmt = resolve_formatter(model_info)
       gather_and_dispatch(req, service, fmt, model_info)

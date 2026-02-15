@@ -445,6 +445,84 @@ function M.setup()
         },
       },
     },
+    fimcontextserver = {
+      description = 'Manage the FIM context server',
+      subcommands = {
+        setup = {
+          description = 'Set up the Python environment for fimcontextserver',
+          execute = function(_)
+            local python_env = require('cassandra_ai.fimcontextserver.python_env')
+            vim.notify('Setting up Python environment...', vim.log.levels.INFO)
+            python_env.ensure(function(ok, python_path)
+              if ok then
+                vim.notify('Python environment ready: ' .. (python_path or '?'), vim.log.levels.INFO)
+              else
+                vim.notify('Python environment setup failed. Check :Cassy log for details.', vim.log.levels.ERROR)
+              end
+            end)
+          end,
+        },
+        status = {
+          description = 'Show fimcontextserver status for the current project',
+          execute = function(_)
+            local fcs = require('cassandra_ai.fimcontextserver')
+            local status = fcs.get_status()
+            local parts = { 'fimcontextserver: ' .. status.status }
+            if status.project_root then
+              table.insert(parts, 'project: ' .. status.project_root)
+            end
+            if status.file_count then
+              table.insert(parts, 'files: ' .. status.file_count)
+            end
+            if status.bm25_chunks then
+              table.insert(parts, 'BM25 chunks: ' .. status.bm25_chunks)
+            end
+            if status.restart_count > 0 then
+              table.insert(parts, 'restarts: ' .. status.restart_count)
+            end
+            vim.notify(table.concat(parts, '\n'), vim.log.levels.INFO)
+          end,
+        },
+        restart = {
+          description = 'Restart fimcontextserver for the current project',
+          execute = function(_)
+            local fcs = require('cassandra_ai.fimcontextserver')
+            local project = require('cassandra_ai.fimcontextserver.project')
+            fcs.shutdown()
+            local filepath = vim.api.nvim_buf_get_name(0)
+            local root = project.get_project_root(filepath)
+            if root then
+              local proj_conf = project.get_config(root)
+              vim.notify('Restarting fimcontextserver...', vim.log.levels.INFO)
+              fcs.get_or_start(root, proj_conf, function(ok)
+                if ok then
+                  vim.notify('fimcontextserver restarted', vim.log.levels.INFO)
+                else
+                  vim.notify('fimcontextserver restart failed', vim.log.levels.ERROR)
+                end
+              end)
+            else
+              vim.notify('No project root found for current file', vim.log.levels.WARN)
+            end
+          end,
+        },
+        reload = {
+          description = 'Re-read .cassandra.json for the current project',
+          execute = function(_)
+            local project = require('cassandra_ai.fimcontextserver.project')
+            local filepath = vim.api.nvim_buf_get_name(0)
+            local root = project.get_project_root(filepath)
+            if root then
+              project.invalidate(root)
+              local new_conf = project.get_config(root)
+              vim.notify('Reloaded .cassandra.json for ' .. root .. '\n' .. vim.inspect(new_conf), vim.log.levels.INFO)
+            else
+              vim.notify('No project root found for current file', vim.log.levels.WARN)
+            end
+          end,
+        },
+      },
+    },
   }
 
   register_command('Cassy', commands)
