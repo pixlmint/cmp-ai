@@ -1,0 +1,147 @@
+import math
+import re
+from collections import Counter
+
+from fim.deps import HAS_TREE_SITTER, PHP_LANGUAGE, Parser
+from fim.types import FIMExample
+
+
+def print_dataset_stats(examples: list[FIMExample], rejected: int = 0):
+    """Print summary statistics about the generated dataset."""
+    if not examples:
+        print("  No examples generated!")
+        return
+
+    kinds = Counter(ex.span_kind for ex in examples)
+    mid_lens = [ex.middle_lines for ex in examples]
+    has_xf = sum(1 for ex in examples if ex.cross_file_context)
+    complexity_scores = [ex.complexity_score for ex in examples if ex.complexity_score > 0]
+
+    # Categorize span types
+    ast_count = sum(c for k, c in kinds.items() if k.startswith("ast_"))
+    dev_count = sum(c for k, c in kinds.items() if k.startswith("dev_"))
+    random_count = sum(c for k, c in kinds.items() if k in ("char_random", "lines"))
+    regex_count = sum(c for k, c in kinds.items() if k in ("function_body", "expression", "block"))
+    total = len(examples)
+
+    print(f"\n  Dataset Statistics:")
+    print(f"  {'─' * 50}")
+    print(f"  Total examples:        {total}")
+    if rejected:
+        print(f"  Quality-filtered out:  {rejected}")
+    print(f"  Unique files:          {len(set(ex.filepath for ex in examples))}")
+    print(f"  With cross-file ctx:   {has_xf}")
+    print(f"  Span categories:")
+    if ast_count:
+        print(f"    AST spans:           {ast_count:>6} ({100*ast_count/total:.1f}%)")
+    if regex_count:
+        print(f"    Regex spans:         {regex_count:>6} ({100*regex_count/total:.1f}%)")
+    if dev_count:
+        print(f"    Dev-behavior spans:  {dev_count:>6} ({100*dev_count/total:.1f}%)")
+    if random_count:
+        print(f"    Random spans:        {random_count:>6} ({100*random_count/total:.1f}%)")
+    print(f"  Span types (detailed):")
+    for kind, count in kinds.most_common():
+        print(f"    {kind:<25} {count:>6}")
+    print(f"  Middle section lines:")
+    print(f"    min: {min(mid_lens)}, max: {max(mid_lens)}, "
+          f"mean: {sum(mid_lens)/len(mid_lens):.1f}, "
+          f"median: {sorted(mid_lens)[len(mid_lens)//2]}")
+    if complexity_scores:
+        print(f"  Complexity scores:")
+        print(f"    min: {min(complexity_scores):.2f}, max: {max(complexity_scores):.2f}, "
+              f"mean: {sum(complexity_scores)/len(complexity_scores):.2f}")
+
+
+def compute_complexity_score(source: str) -> float:
+    """
+    Compute a complexity score for a PHP file based on AST identifier density.
+    Higher = more complex code (more identifiers per byte).
+    """
+    if not HAS_TREE_SITTER:
+        # Regex fallback: count identifiers roughly
+        idents = re.findall(r"\b[a-zA-Z_]\w*\b", source)
+        if not source:
+            return 0.0
+        return len(idents) / max(1, len(source)) * 100
+
+    parser = Parser(PHP_LANGUAGE)
+    tree = parser.parse(source.encode("utf-8"))
+
+    ident_count = 0
+
+    def _count_idents(node):
+        nonlocal ident_count
+        if node.type in ("name", "variable_name", "member_access_expression"):
+            ident_count += 1
+        for child in node.children:
+            _count_idents(child)
+
+    _count_idents(tree.root_node)
+    if not source:
+        return 0.0
+    return ident_count / max(1, len(source)) * 100
+
+
+def _char_entropy(text: str) -> float:
+    """Shannon entropy of characters in text."""
+    if not text:
+        return 0.0
+    freq: dict[str, int] = {}
+    for c in text:
+        freq[c] = freq.get(c, 0) + 1
+    total = len(text)
+    return -sum((n / total) * math.log2(n / total) for n in freq.values())
+
+
+def filter_low_quality_examples(examples: list[FIMExample]) -> tuple[list[FIMExample], int]:
+    """
+    Apply heuristic quality filters. Returns (kept, rejected_count).
+
+    Filters:
+    - Repetition: middle has >50% duplicate lines
+    - Entropy: char entropy of middle < 2.0 bits
+    - Comment-only: middle is >80% comments
+    - Length ratio: middle is <3% or >80% of total (prefix+middle+suffix)
+    """
+    kept = []
+    rejected = 0
+
+    for ex in examples:
+        middle = ex.middle
+
+        # Repetition check
+        mid_lines = middle.split("\n")
+        if len(mid_lines) > 2:
+            unique = set(l.strip() for l in mid_lines if l.strip())
+            total_non_empty = sum(1 for l in mid_lines if l.strip())
+            if total_non_empty > 0 and len(unique) / total_non_empty < 0.5:
+                rejected += 1
+                continue
+
+        # Entropy check
+        if _char_entropy(middle) < 2.0:
+            rejected += 1
+            continue
+
+        # Comment-only check
+        if mid_lines:
+            comment_lines = sum(
+                1 for l in mid_lines
+                if l.strip().startswith(("//", "/*", "*", "#"))
+            )
+            if comment_lines / max(1, len(mid_lines)) > 0.8:
+                rejected += 1
+                continue
+
+        # Length ratio check
+        total_len = len(ex.prefix) + len(middle) + len(ex.suffix)
+        if total_len > 0:
+            ratio = len(middle) / total_len
+            if ratio < 0.03 or ratio > 0.80:
+                rejected += 1
+                continue
+
+        kept.append(ex)
+
+    return kept, rejected
