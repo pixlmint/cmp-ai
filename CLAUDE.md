@@ -12,17 +12,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Quote style**: Auto-prefer single quotes
 - **Formatter**: `stylua` with config in `stylua.toml` (column width 1200)
 
-## Commands
-
-```bash
-make format          # Format with stylua
-make test            # Run all tests (mini.test)
-make test_file FILE=tests/test_config.lua  # Run a single test file
-make deps            # Clone test dependencies (plenary, mini.nvim, nvim-treesitter)
-```
-
-Tests use `mini.test` (not plenary busted). Test files follow the pattern `tests/test_*.lua`. The test harness runs headless nvim with `tests/minimal_init.lua`.
-
 ## Architecture
 
 ### Completion Flow
