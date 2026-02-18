@@ -748,6 +748,95 @@ function M.accept()
   return true
 end
 
+--- Accept the first `n` lines of the current completion, keeping the rest as ghost text.
+local function accept_n_lines(n)
+  if not is_visible or current_index == 0 or #completions == 0 then
+    return false
+  end
+
+  local text = completions[current_index]
+  if not text or text == '' then
+    return false
+  end
+
+  local comp_lines = vim.split(text, '\n', { plain = true })
+
+  if n >= #comp_lines then
+    return M.accept()
+  end
+
+  logger.info('accept_n_lines(' .. n .. '/' .. #comp_lines .. ')')
+
+  clear_ghost_text()
+  internal_move = true
+
+  local row = cursor_pos[1] -- 1-indexed
+  local col = cursor_pos[2] -- 0-indexed bytes
+
+  local cur_line = vim.api.nvim_buf_get_lines(bufnr, row - 1, row, false)[1] or ''
+  local before = vim.fn.strpart(cur_line, 0, col, 1)
+  local after_cursor = vim.fn.strpart(cur_line, col, vim.fn.strdisplaywidth(cur_line), 1)
+
+  local new_lines = {}
+  new_lines[1] = before .. comp_lines[1]
+  for i = 2, n do
+    new_lines[#new_lines + 1] = comp_lines[i]
+  end
+  -- Consume leading whitespace from the next completion line so the cursor lands after indentation
+  local next_line = comp_lines[n + 1]
+  local indent = next_line:match('^(%s*)') or ''
+  new_lines[#new_lines + 1] = indent .. after_cursor
+
+  vim.api.nvim_buf_set_lines(bufnr, row - 1, row, false, new_lines)
+
+  -- Position cursor after the indentation
+  local new_row = row + n -- 1-indexed
+  local new_col = #indent
+  vim.api.nvim_win_set_cursor(0, { new_row, new_col })
+  cursor_pos = { new_row, new_col }
+
+  -- Build remaining completion, stripping the consumed indent from the first remaining line
+  comp_lines[n + 1] = next_line:sub(#indent + 1)
+  local remaining = table.concat(comp_lines, '\n', n + 1)
+  completions = { remaining }
+  current_index = 1
+
+  render_ghost_text(remaining)
+
+  vim.schedule(function()
+    internal_move = false
+  end)
+
+  return true
+end
+
+function M.accept_line()
+  return accept_n_lines(1)
+end
+
+function M.accept_paragraph()
+  if not is_visible or current_index == 0 or #completions == 0 then
+    return false
+  end
+
+  local text = completions[current_index]
+  if not text or text == '' then
+    return false
+  end
+
+  local comp_lines = vim.split(text, '\n', { plain = true })
+
+  -- Find first empty line and accept through it (so cursor lands on the next meaningful line)
+  for i, line in ipairs(comp_lines) do
+    if vim.trim(line) == '' then
+      return accept_n_lines(i)
+    end
+  end
+
+  -- No empty line found — accept all
+  return M.accept()
+end
+
 -- ---------------------------------------------------------------------------
 -- Debounce
 -- ---------------------------------------------------------------------------
@@ -792,6 +881,10 @@ local function setup_autocmds()
       end
       if is_visible and cursor_pos and #completions > 0 then
         local cur = vim.api.nvim_win_get_cursor(0)
+        if cur[1] == cursor_pos[1] and cur[2] == cursor_pos[2] then
+          -- Cursor hasn't moved (e.g. after partial accept) — keep ghost text
+          return
+        end
         if cur[1] == cursor_pos[1] and cur[2] > cursor_pos[2] then
           -- User typed forward on the same line — check if it matches the completion
           local advance = cur[2] - cursor_pos[2]
@@ -861,6 +954,26 @@ local function setup_keymaps()
       -- Fall through to original mapping
       return vim.api.nvim_replace_termcodes(km.accept, true, false, true)
     end, { expr = true, noremap = true, silent = true, desc = 'Accept AI completion' })
+  end
+
+  if km.accept_line then
+    vim.keymap.set('i', km.accept_line, function()
+      if M.is_visible() then
+        vim.schedule(M.accept_line)
+        return ''
+      end
+      return vim.api.nvim_replace_termcodes(km.accept_line, true, false, true)
+    end, { expr = true, noremap = true, silent = true, desc = 'Accept AI completion line' })
+  end
+
+  if km.accept_paragraph then
+    vim.keymap.set('i', km.accept_paragraph, function()
+      if M.is_visible() then
+        vim.schedule(M.accept_paragraph)
+        return ''
+      end
+      return vim.api.nvim_replace_termcodes(km.accept_paragraph, true, false, true)
+    end, { expr = true, noremap = true, silent = true, desc = 'Accept AI completion paragraph' })
   end
 
   if km.dismiss then
