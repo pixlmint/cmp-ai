@@ -361,20 +361,31 @@ reset_validation_idle_timer = function()
   if not validation_idle_timer then
     validation_idle_timer = vim.uv.new_timer()
   end
-  local idle_ms = conf:get('inline').deferred_idle_ms or 1000
-  validation_idle_timer:start(
-    idle_ms,
-    0,
-    vim.schedule_wrap(function()
-      local pv = pending_validation
-      if not pv then
-        return
-      end
-      local typed = compute_typed_since_trigger(pv) or ''
-      logger.info('deferred: idle timer fired, showing completion')
-      show_validated_completion(pv, typed)
-    end)
-  )
+  local idle_ms = conf:get('inline').deferred_idle_ms
+
+  local function show_completion()
+    local pv = pending_validation
+    if not pv then
+      return false
+    end
+    local typed = compute_typed_since_trigger(pv) or ''
+    show_validated_completion(pv, typed)
+    return true
+  end
+
+  if idle_ms == 0 then
+    show_completion()
+  elseif idle_ms > -1 then
+    validation_idle_timer:start(
+      idle_ms,
+      0,
+      vim.schedule_wrap(function()
+        if show_completion() then
+          logger.info('deferred: idle timer fired, showing completion')
+        end
+      end)
+    )
+  end
 end
 
 -- ---------------------------------------------------------------------------
