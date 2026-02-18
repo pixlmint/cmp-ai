@@ -697,7 +697,15 @@ function M.accept()
     return false
   end
 
-  logger.info('completion accepted (' .. #vim.split(text, '\n', { plain = true }) .. ' lines)')
+  local num_lines = #vim.split(text, '\n', { plain = true })
+  logger.info('completion accepted (' .. num_lines .. ' lines)')
+
+  if current_request_id then
+    local telemetry = require('cassandra_ai.telemetry')
+    if telemetry:is_enabled() then
+      telemetry:log_acceptance(current_request_id, { accepted = true, acceptance_type = 'full', lines_accepted = num_lines, lines_remaining = 0 })
+    end
+  end
 
   local row = cursor_pos[1] -- 1-indexed
   local col = cursor_pos[2] -- 0-indexed bytes
@@ -765,7 +773,16 @@ local function accept_n_lines(n)
     return M.accept()
   end
 
+  local lines_remaining = #comp_lines - n
   logger.info('accept_n_lines(' .. n .. '/' .. #comp_lines .. ')')
+
+  if current_request_id then
+    local telemetry = require('cassandra_ai.telemetry')
+    if telemetry:is_enabled() then
+      local accepted_text = table.concat(comp_lines, '\n', 1, n)
+      telemetry:log_acceptance(current_request_id, { accepted = true, acceptance_type = 'partial', lines_accepted = n, lines_remaining = lines_remaining, accepted_text = accepted_text })
+    end
+  end
 
   clear_ghost_text()
   internal_move = true
