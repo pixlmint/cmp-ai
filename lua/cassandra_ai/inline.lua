@@ -431,6 +431,12 @@ validate_or_defer = function()
   local typed = compute_typed_since_trigger(pv)
   if typed == nil then
     logger.trace('deferred: cursor moved off trigger line, discarding')
+    if current_request_id then
+      local telemetry = require('cassandra_ai.telemetry')
+      if telemetry:is_enabled() then
+        telemetry:log_acceptance(current_request_id, { accepted = false, rejection_reason = 'cursor_moved' })
+      end
+    end
     clear_validation_state()
     return
   end
@@ -446,6 +452,12 @@ validate_or_defer = function()
 
   if not has_match then
     logger.trace('deferred: typed "' .. typed .. '" mismatches all completions, discarding')
+    if current_request_id then
+      local telemetry = require('cassandra_ai.telemetry')
+      if telemetry:is_enabled() then
+        telemetry:log_acceptance(current_request_id, { accepted = false, rejection_reason = 'mismatch', typed_text = typed })
+      end
+    end
     clear_validation_state()
     return
   end

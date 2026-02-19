@@ -101,7 +101,7 @@ end
 
 --- Log an acceptance event
 --- @param request_id string UUID for this request
---- @param data table Acceptance data (accepted, accepted_item_label, acceptance_type, lines_accepted, lines_remaining, accepted_text)
+--- @param data table Acceptance data (accepted, accepted_item_label, acceptance_type, lines_accepted, lines_remaining, accepted_text, rejection_reason, typed_text)
 function Telemetry:log_acceptance(request_id, data)
   if not config.enabled then
     return
@@ -117,6 +117,8 @@ function Telemetry:log_acceptance(request_id, data)
     lines_accepted = data.lines_accepted,
     lines_remaining = data.lines_remaining,
     accepted_text = data.accepted_text,
+    rejection_reason = data.rejection_reason,
+    typed_text = data.typed_text,
   }
 
   self:_add_to_buffer(entry)
