@@ -275,16 +275,84 @@ local function compute_typed_since_trigger(pv)
   return line:sub(pv.trigger_pos[2] + 1, cur[2])
 end
 
---- Find the number of characters the user must type before we show the completion.
---- Returns nil if completion has no space (fall back to idle timer).
-local function find_validation_threshold(text)
-  local space_pos = text:find('%s')
-  if not space_pos then
+--- Parse an overlap config string into (words, chars).
+--- Format: [N][+M] where N = whole words, M = extra chars (or fraction if < 1).
+--- Returns words (int or nil), chars (number or nil).
+local function parse_overlap(s)
+  if not s or s == '' then
+    return nil, nil
+  end
+  local words, chars
+  local plus = s:find('+', 1, true)
+  if plus then
+    local before = s:sub(1, plus - 1)
+    local after = s:sub(plus + 1)
+    words = before ~= '' and tonumber(before) or nil
+    chars = after ~= '' and tonumber(after) or nil
+  else
+    words = tonumber(s)
+  end
+  return words, chars
+end
+
+--- Compute how many characters of a completion the user must type before showing it.
+--- Returns nil if the completion text doesn't have enough content (fall back to idle timer).
+local function compute_overlap_threshold(text, overlap_str)
+  local words, chars = parse_overlap(overlap_str)
+
+  -- "+M" with no words: M is total characters
+  if not words then
+    return chars
+  end
+
+  -- Walk text to find position after N complete words (word + trailing whitespace)
+  local pos = 1
+  local len = #text
+  for _ = 1, words do
+    -- Skip leading whitespace
+    local ws_start = text:find('%S', pos)
+    if not ws_start then
+      return nil -- not enough words
+    end
+    -- Find end of word
+    local word_end = text:find('%s', ws_start)
+    if not word_end then
+      if not chars then
+        return nil -- need trailing space after last required word
+      end
+      return nil -- not enough words for the +M part
+    end
+    -- Skip trailing whitespace after this word
+    local next_non_ws = text:find('%S', word_end)
+    pos = next_non_ws or (len + 1)
+  end
+
+  -- No +M: require N words including trailing space
+  if not chars then
+    return pos - 1 -- position just before next word starts (includes trailing space)
+  end
+
+  -- Find the next word to apply +M against
+  local word_start = pos
+  if word_start > len then
     return nil
   end
-  local next_word_match = conf:get('inline').next_word_match or 1
-  return space_pos + next_word_match
+  local word_end = text:find('%s', word_start)
+  local word_len = (word_end and word_end or (len + 1)) - word_start
+
+  local extra
+  if chars > 0 and chars < 1 then
+    -- Percentage of next word
+    extra = math.ceil(chars * word_len)
+  else
+    extra = math.min(math.floor(chars), word_len)
+  end
+
+  return (word_start - 1) + extra
 end
+
+-- Expose for testing
+M._compute_overlap_threshold = compute_overlap_threshold
 
 --- Trim the typed prefix from all completion candidates, filter out empty results.
 local function trim_completions(comps, prefix)
@@ -345,7 +413,8 @@ validate_or_defer = function()
   end
 
   -- Check if past the validation threshold
-  local threshold = find_validation_threshold(pv.completions[1])
+  local overlap = conf:get('inline').auto_trigger_overlap or '1+1'
+  local threshold = compute_overlap_threshold(pv.completions[1], overlap)
   if threshold and #typed >= threshold then
     logger.info('deferred: threshold reached (' .. #typed .. '>=' .. threshold .. '), showing completion')
     show_validated_completion(pv, typed)
