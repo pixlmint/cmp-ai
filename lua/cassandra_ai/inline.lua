@@ -295,60 +295,98 @@ local function parse_overlap(s)
   return words, chars
 end
 
+--- Classify a character into a word category (matching vim's `w` motion).
+--- Uses iskeyword to distinguish keyword chars from punctuation.
+--- Returns: 1 = keyword, 2 = non-keyword/non-whitespace (punctuation), 3 = whitespace
+local function char_class(ch)
+  if ch:match('%s') then
+    return 3
+  end
+  if vim.fn.match(ch, '\\k') == 0 then
+    return 1
+  end
+  return 2
+end
+
+--- Walk text and return a list of word spans: { {start, end_}, ... }
+--- A "word" is a maximal run of same-class non-whitespace characters,
+--- matching vim's `w` motion (keyword vs punctuation are separate words).
+local function find_words(text)
+  local result = {}
+  local len = #text
+  local i = 1
+  while i <= len do
+    local ch = text:sub(i, i)
+    local cls = char_class(ch)
+    if cls ~= 3 then
+      local start = i
+      i = i + 1
+      while i <= len do
+        local c2 = text:sub(i, i)
+        if char_class(c2) ~= cls then
+          break
+        end
+        i = i + 1
+      end
+      result[#result + 1] = { start, i - 1 }
+    else
+      i = i + 1
+    end
+  end
+  return result
+end
+
 --- Compute how many characters of a completion the user must type before showing it.
+--- Words are defined by vim's iskeyword (same as `w` motion), so `this.call(arg`
+--- is 5 words: `this`, `.`, `call`, `(`, `arg`.
 --- Returns nil if the completion text doesn't have enough content (fall back to idle timer).
 local function compute_overlap_threshold(text, overlap_str)
-  local words, chars = parse_overlap(overlap_str)
+  local words_n, chars = parse_overlap(overlap_str)
 
   -- "+M" with no words: M is total characters
-  if not words then
+  if not words_n then
     return chars
   end
 
-  -- Walk text to find position after N complete words (word + trailing whitespace)
-  local pos = 1
-  local len = #text
-  for _ = 1, words do
-    -- Skip leading whitespace
-    local ws_start = text:find('%S', pos)
-    if not ws_start then
-      return nil -- not enough words
-    end
-    -- Find end of word
-    local word_end = text:find('%s', ws_start)
-    if not word_end then
-      if not chars then
-        return nil -- need trailing space after last required word
-      end
-      return nil -- not enough words for the +M part
-    end
-    -- Skip trailing whitespace after this word
-    local next_non_ws = text:find('%S', word_end)
-    pos = next_non_ws or (len + 1)
+  local word_spans = find_words(text)
+
+  if #word_spans < words_n then
+    return nil -- not enough words
   end
 
-  -- No +M: require N words including trailing space
+  -- Position after N-th word
+  local last_word_end = word_spans[words_n][2]
+
+  -- No +M: require N complete words plus any trailing whitespace
   if not chars then
-    return pos - 1 -- position just before next word starts (includes trailing space)
+    -- Find start of next word (or end of text) to include trailing whitespace
+    if #word_spans > words_n then
+      return word_spans[words_n + 1][1] - 1
+    end
+    -- No next word — check if there's trailing whitespace after last word
+    if last_word_end < #text then
+      return #text
+    end
+    return nil -- word isn't "complete" (no trailing space/punctuation boundary)
   end
 
-  -- Find the next word to apply +M against
-  local word_start = pos
-  if word_start > len then
+  -- Need a next word to apply +M against
+  if #word_spans <= words_n then
     return nil
   end
-  local word_end = text:find('%s', word_start)
-  local word_len = (word_end and word_end or (len + 1)) - word_start
+
+  local next_span = word_spans[words_n + 1]
+  local next_word_start = next_span[1]
+  local next_word_len = next_span[2] - next_span[1] + 1
 
   local extra
   if chars > 0 and chars < 1 then
-    -- Percentage of next word
-    extra = math.ceil(chars * word_len)
+    extra = math.ceil(chars * next_word_len)
   else
-    extra = math.min(math.floor(chars), word_len)
+    extra = math.min(math.floor(chars), next_word_len)
   end
 
-  return (word_start - 1) + extra
+  return (next_word_start - 1) + extra
 end
 
 -- Expose for testing
