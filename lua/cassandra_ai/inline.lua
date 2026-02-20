@@ -24,6 +24,9 @@ local validate_or_defer, show_validated_completion, reset_validation_idle_timer
 
 local ns = vim.api.nvim_create_namespace('cassandra_ai_inline')
 
+-- Seed RNG once on module load for UUID generation
+math.randomseed(os.clock() * 1e6 + (vim.uv.hrtime() % 1e9))
+
 -- ---------------------------------------------------------------------------
 -- Request Logging
 -- ---------------------------------------------------------------------------
