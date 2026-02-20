@@ -437,10 +437,7 @@ validate_or_defer = function()
   if typed == nil then
     logger.trace('deferred: cursor moved off trigger line, discarding')
     if pv.request_id then
-      local telemetry = require('cassandra_ai.telemetry')
-      if telemetry:is_enabled() then
-        telemetry:log_acceptance(pv.request_id, { accepted = false, rejection_reason = 'cursor_moved' })
-      end
+      require('cassandra_ai.telemetry'):log_acceptance(pv.request_id, { accepted = false, rejection_reason = 'cursor_moved' })
     end
     clear_validation_state()
     return
@@ -458,10 +455,7 @@ validate_or_defer = function()
   if not has_match then
     logger.trace('deferred: typed "' .. typed .. '" mismatches all completions, discarding')
     if pv.request_id then
-      local telemetry = require('cassandra_ai.telemetry')
-      if telemetry:is_enabled() then
-        telemetry:log_acceptance(pv.request_id, { accepted = false, rejection_reason = 'mismatch', typed_text = typed })
-      end
+      require('cassandra_ai.telemetry'):log_acceptance(pv.request_id, { accepted = false, rejection_reason = 'mismatch', typed_text = typed })
     end
     clear_validation_state()
     return
@@ -536,12 +530,10 @@ local function handle_completion_response(req, data)
   current_job = nil
   local elapsed_ms = (os.clock() - req.start_time) * 1000
   local telemetry = require('cassandra_ai.telemetry')
-  if telemetry:is_enabled() then
-    telemetry:log_response(req.request_id, {
-      response_raw = data,
-      response_time_ms = elapsed_ms,
-    })
-  end
+  telemetry:log_response(req.request_id, {
+    response_raw = data,
+    response_time_ms = elapsed_ms,
+  })
 
   if req.gen ~= generation then
     logger.trace('on_complete() -> discarding: stale generation')
@@ -614,23 +606,20 @@ local function dispatch_request(req, service, fmt, model_info, additional_contex
   req.start_time = os.clock()
   local prompt_data = fmt(req.before, req.after, { filetype = req.ft, rejected_completions = req.rejected }, additional_context)
 
-  local telemetry = require('cassandra_ai.telemetry')
-  if telemetry:is_enabled() then
-    local provider = conf:get('provider')
-    telemetry:log_request(req.request_id, {
-      cwd = vim.fn.getcwd(),
-      filename = vim.api.nvim_buf_get_name(0),
-      filetype = req.ft,
-      cursor = { line = cursor_pos[1], col = cursor_pos[2] },
-      lines_before = req.before,
-      lines_after = req.after,
-      provider = provider.name,
-      provider_config = safe_serialize_config(provider.params),
-      model = model_info and model_info.model,
-      prompt_data = prompt_data,
-      additional_context = additional_context,
-    })
-  end
+  local provider = conf:get('provider')
+  require('cassandra_ai.telemetry'):log_request(req.request_id, {
+    cwd = vim.fn.getcwd(),
+    filename = vim.api.nvim_buf_get_name(0),
+    filetype = req.ft,
+    cursor = { line = cursor_pos[1], col = cursor_pos[2] },
+    lines_before = req.before,
+    lines_after = req.after,
+    provider = provider.name,
+    provider_config = safe_serialize_config(provider.params),
+    model = model_info and model_info.model,
+    prompt_data = prompt_data,
+    additional_context = additional_context,
+  })
 
   current_job = service:complete(prompt_data, function(data)
     handle_completion_response(req, data)
@@ -756,10 +745,7 @@ end
 
 function M.dismiss()
   if is_visible and current_request_id then
-    local telemetry = require('cassandra_ai.telemetry')
-    if telemetry:is_enabled() then
-      telemetry:log_acceptance(current_request_id, { accepted = false })
-    end
+    require('cassandra_ai.telemetry'):log_acceptance(current_request_id, { accepted = false })
   end
   cancel_request()
   cancel_debounce()
@@ -799,12 +785,8 @@ function M.regenerate()
     return
   end
 
-  -- Log dismissal in telemetry
   if current_request_id then
-    local telemetry = require('cassandra_ai.telemetry')
-    if telemetry:is_enabled() then
-      telemetry:log_acceptance(current_request_id, { accepted = false })
-    end
+    require('cassandra_ai.telemetry'):log_acceptance(current_request_id, { accepted = false })
   end
 
   logger.info('regenerate: rejecting completion and requesting new one')
@@ -826,10 +808,7 @@ function M.accept()
   logger.info('completion accepted (' .. num_lines .. ' lines)')
 
   if current_request_id then
-    local telemetry = require('cassandra_ai.telemetry')
-    if telemetry:is_enabled() then
-      telemetry:log_acceptance(current_request_id, { accepted = true, acceptance_type = 'full', lines_accepted = num_lines, lines_remaining = 0 })
-    end
+    require('cassandra_ai.telemetry'):log_acceptance(current_request_id, { accepted = true, acceptance_type = 'full', lines_accepted = num_lines, lines_remaining = 0 })
   end
 
   local row = cursor_pos[1] -- 1-indexed
@@ -902,11 +881,8 @@ local function accept_n_lines(n)
   logger.info('accept_n_lines(' .. n .. '/' .. #comp_lines .. ')')
 
   if current_request_id then
-    local telemetry = require('cassandra_ai.telemetry')
-    if telemetry:is_enabled() then
-      local accepted_text = table.concat(comp_lines, '\n', 1, n)
-      telemetry:log_acceptance(current_request_id, { accepted = true, acceptance_type = 'partial', lines_accepted = n, lines_remaining = lines_remaining, accepted_text = accepted_text })
-    end
+    local accepted_text = table.concat(comp_lines, '\n', 1, n)
+    require('cassandra_ai.telemetry'):log_acceptance(current_request_id, { accepted = true, acceptance_type = 'partial', lines_accepted = n, lines_remaining = lines_remaining, accepted_text = accepted_text })
   end
 
   clear_ghost_text()
