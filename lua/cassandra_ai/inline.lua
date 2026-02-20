@@ -266,6 +266,9 @@ end
 --- Get text typed since the trigger position by comparing current buffer state.
 --- Returns nil if cursor moved to a different line or backward past trigger column.
 local function compute_typed_since_trigger(pv)
+  if vim.api.nvim_get_current_buf() ~= pv.trigger_bufnr then
+    return nil
+  end
   local cur = vim.api.nvim_win_get_cursor(0)
   if cur[1] ~= pv.trigger_pos[1] then
     return nil
