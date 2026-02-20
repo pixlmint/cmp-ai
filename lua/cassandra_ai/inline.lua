@@ -24,6 +24,9 @@ local validate_or_defer, show_validated_completion, reset_validation_idle_timer
 
 local ns = vim.api.nvim_create_namespace('cassandra_ai_inline')
 
+-- Seed RNG once on module load for UUID generation
+math.randomseed(os.clock() * 1e6 + (vim.uv.hrtime() % 1e9))
+
 -- ---------------------------------------------------------------------------
 -- Request Logging
 -- ---------------------------------------------------------------------------
@@ -54,8 +57,6 @@ local function safe_serialize_config(params)
       result[key] = safe_serialize_config(value) -- Recursive
     elseif value_type == 'string' or value_type == 'number' or value_type == 'boolean' then
       result[key] = value
-    elseif value_type == 'nil' then
-      -- Skip nil values
     else
       -- Thread, userdata, etc.
       result[key] = { __type = value_type }
@@ -83,6 +84,8 @@ local function render_ghost_text(text)
   if not text or text == '' then
     return
   end
+
+  require('cassandra_ai.integrations').close_completion_menus()
 
   local lines = vim.split(text, '\n', { plain = true })
   local row = cursor_pos[1] - 1 -- 0-indexed
@@ -122,6 +125,8 @@ end
 local function cancel_debounce()
   if debounce_timer then
     debounce_timer:stop()
+    debounce_timer:close()
+    debounce_timer = nil
   end
 end
 
@@ -252,6 +257,8 @@ end
 local function cancel_validation_timer()
   if validation_idle_timer then
     validation_idle_timer:stop()
+    validation_idle_timer:close()
+    validation_idle_timer = nil
   end
 end
 
@@ -264,6 +271,9 @@ end
 --- Get text typed since the trigger position by comparing current buffer state.
 --- Returns nil if cursor moved to a different line or backward past trigger column.
 local function compute_typed_since_trigger(pv)
+  if vim.api.nvim_get_current_buf() ~= pv.trigger_bufnr then
+    return nil
+  end
   local cur = vim.api.nvim_win_get_cursor(0)
   if cur[1] ~= pv.trigger_pos[1] then
     return nil
@@ -431,11 +441,8 @@ validate_or_defer = function()
   local typed = compute_typed_since_trigger(pv)
   if typed == nil then
     logger.trace('deferred: cursor moved off trigger line, discarding')
-    if current_request_id then
-      local telemetry = require('cassandra_ai.telemetry')
-      if telemetry:is_enabled() then
-        telemetry:log_acceptance(current_request_id, { accepted = false, rejection_reason = 'cursor_moved' })
-      end
+    if pv.request_id then
+      require('cassandra_ai.telemetry'):log_acceptance(pv.request_id, { accepted = false, rejection_reason = 'cursor_moved' })
     end
     clear_validation_state()
     return
@@ -452,11 +459,8 @@ validate_or_defer = function()
 
   if not has_match then
     logger.trace('deferred: typed "' .. typed .. '" mismatches all completions, discarding')
-    if current_request_id then
-      local telemetry = require('cassandra_ai.telemetry')
-      if telemetry:is_enabled() then
-        telemetry:log_acceptance(current_request_id, { accepted = false, rejection_reason = 'mismatch', typed_text = typed })
-      end
+    if pv.request_id then
+      require('cassandra_ai.telemetry'):log_acceptance(pv.request_id, { accepted = false, rejection_reason = 'mismatch', typed_text = typed })
     end
     clear_validation_state()
     return
@@ -477,9 +481,7 @@ end
 
 reset_validation_idle_timer = function()
   cancel_validation_timer()
-  if not validation_idle_timer then
-    validation_idle_timer = vim.uv.new_timer()
-  end
+  validation_idle_timer = vim.uv.new_timer()
   local idle_ms = conf:get('inline').deferred_idle_ms
 
   local function show_completion()
@@ -531,12 +533,10 @@ local function handle_completion_response(req, data)
   current_job = nil
   local elapsed_ms = (os.clock() - req.start_time) * 1000
   local telemetry = require('cassandra_ai.telemetry')
-  if telemetry:is_enabled() then
-    telemetry:log_response(req.request_id, {
-      response_raw = data,
-      response_time_ms = elapsed_ms,
-    })
-  end
+  telemetry:log_response(req.request_id, {
+    response_raw = data,
+    response_time_ms = elapsed_ms,
+  })
 
   if req.gen ~= generation then
     logger.trace('on_complete() -> discarding: stale generation')
@@ -590,6 +590,7 @@ local function handle_completion_response(req, data)
       trigger_pos = cursor_pos,
       trigger_bufnr = bufnr,
       trigger_line_text = vim.api.nvim_buf_get_lines(bufnr, cursor_pos[1] - 1, cursor_pos[1], false)[1] or '',
+      request_id = current_request_id,
     }
     logger.trace('on_complete() -> deferred: stored ' .. #data .. ' completion(s) for validation')
     validate_or_defer()
@@ -608,23 +609,20 @@ local function dispatch_request(req, service, fmt, model_info, additional_contex
   req.start_time = os.clock()
   local prompt_data = fmt(req.before, req.after, { filetype = req.ft, rejected_completions = req.rejected }, additional_context)
 
-  local telemetry = require('cassandra_ai.telemetry')
-  if telemetry:is_enabled() then
-    local provider = conf:get('provider')
-    telemetry:log_request(req.request_id, {
-      cwd = vim.fn.getcwd(),
-      filename = vim.api.nvim_buf_get_name(0),
-      filetype = req.ft,
-      cursor = { line = cursor_pos[1], col = cursor_pos[2] },
-      lines_before = req.before,
-      lines_after = req.after,
-      provider = provider.name,
-      provider_config = safe_serialize_config(provider.params),
-      model = model_info and model_info.model,
-      prompt_data = prompt_data,
-      additional_context = additional_context,
-    })
-  end
+  local provider = conf:get('provider')
+  require('cassandra_ai.telemetry'):log_request(req.request_id, {
+    cwd = vim.fn.getcwd(),
+    filename = vim.api.nvim_buf_get_name(0),
+    filetype = req.ft,
+    cursor = { line = cursor_pos[1], col = cursor_pos[2] },
+    lines_before = req.before,
+    lines_after = req.after,
+    provider = provider.name,
+    provider_config = safe_serialize_config(provider.params),
+    model = model_info and model_info.model,
+    prompt_data = prompt_data,
+    additional_context = additional_context,
+  })
 
   current_job = service:complete(prompt_data, function(data)
     handle_completion_response(req, data)
@@ -634,7 +632,7 @@ end
 --- Gather additional context (if enabled) and dispatch the request.
 local function gather_and_dispatch(req, service, fmt, model_info)
   local context_manager = require('cassandra_ai.context')
-  local supports_context = true
+  local supports_context = require('cassandra_ai.prompt_formatters').supports_context[fmt]
 
   if context_manager.is_enabled() and supports_context then
     logger.trace('gather_and_dispatch() -> collecting context')
@@ -760,10 +758,7 @@ end
 
 function M.dismiss()
   if is_visible and current_request_id then
-    local telemetry = require('cassandra_ai.telemetry')
-    if telemetry:is_enabled() then
-      telemetry:log_acceptance(current_request_id, { accepted = false })
-    end
+    require('cassandra_ai.telemetry'):log_acceptance(current_request_id, { accepted = false })
   end
   cancel_request()
   cancel_debounce()
@@ -803,12 +798,8 @@ function M.regenerate()
     return
   end
 
-  -- Log dismissal in telemetry
   if current_request_id then
-    local telemetry = require('cassandra_ai.telemetry')
-    if telemetry:is_enabled() then
-      telemetry:log_acceptance(current_request_id, { accepted = false })
-    end
+    require('cassandra_ai.telemetry'):log_acceptance(current_request_id, { accepted = false })
   end
 
   logger.info('regenerate: rejecting completion and requesting new one')
@@ -830,10 +821,7 @@ function M.accept()
   logger.info('completion accepted (' .. num_lines .. ' lines)')
 
   if current_request_id then
-    local telemetry = require('cassandra_ai.telemetry')
-    if telemetry:is_enabled() then
-      telemetry:log_acceptance(current_request_id, { accepted = true, acceptance_type = 'full', lines_accepted = num_lines, lines_remaining = 0 })
-    end
+    require('cassandra_ai.telemetry'):log_acceptance(current_request_id, { accepted = true, acceptance_type = 'full', lines_accepted = num_lines, lines_remaining = 0 })
   end
 
   local row = cursor_pos[1] -- 1-indexed
@@ -842,8 +830,8 @@ function M.accept()
   clear_ghost_text()
 
   local cur_line = vim.api.nvim_buf_get_lines(bufnr, row - 1, row, false)[1] or ''
-  local before = vim.fn.strpart(cur_line, 0, col, 1)
-  local after_cursor = vim.fn.strpart(cur_line, col, vim.fn.strdisplaywidth(cur_line), 1)
+  local before = cur_line:sub(1, col)
+  local after_cursor = cur_line:sub(col + 1)
 
   local comp_lines = vim.split(text, '\n', { plain = true })
 
@@ -906,11 +894,8 @@ local function accept_n_lines(n)
   logger.info('accept_n_lines(' .. n .. '/' .. #comp_lines .. ')')
 
   if current_request_id then
-    local telemetry = require('cassandra_ai.telemetry')
-    if telemetry:is_enabled() then
-      local accepted_text = table.concat(comp_lines, '\n', 1, n)
-      telemetry:log_acceptance(current_request_id, { accepted = true, acceptance_type = 'partial', lines_accepted = n, lines_remaining = lines_remaining, accepted_text = accepted_text })
-    end
+    local accepted_text = table.concat(comp_lines, '\n', 1, n)
+    require('cassandra_ai.telemetry'):log_acceptance(current_request_id, { accepted = true, acceptance_type = 'partial', lines_accepted = n, lines_remaining = lines_remaining, accepted_text = accepted_text })
   end
 
   clear_ghost_text()
@@ -920,8 +905,8 @@ local function accept_n_lines(n)
   local col = cursor_pos[2] -- 0-indexed bytes
 
   local cur_line = vim.api.nvim_buf_get_lines(bufnr, row - 1, row, false)[1] or ''
-  local before = vim.fn.strpart(cur_line, 0, col, 1)
-  local after_cursor = vim.fn.strpart(cur_line, col, vim.fn.strdisplaywidth(cur_line), 1)
+  local before = cur_line:sub(1, col)
+  local after_cursor = cur_line:sub(col + 1)
 
   local new_lines = {}
   new_lines[1] = before .. comp_lines[1]
@@ -996,9 +981,10 @@ local function debounced_trigger()
   if not ic.auto_trigger then
     return
   end
-  if not debounce_timer then
-    debounce_timer = vim.uv.new_timer()
+  if require('cassandra_ai.integrations').is_completion_menu_visible() then
+    return
   end
+  debounce_timer = vim.uv.new_timer()
   debounce_timer:start(
     ic.debounce_ms,
     0,
@@ -1087,64 +1073,81 @@ end
 -- Keymaps
 -- ---------------------------------------------------------------------------
 
+local prev_keymaps = {}
+
+local function cleanup_keymaps()
+  for _, key in ipairs(prev_keymaps) do
+    pcall(vim.keymap.del, 'i', key)
+  end
+  prev_keymaps = {}
+end
+
 local function setup_keymaps()
+  cleanup_keymaps()
   local km = conf:get('inline').keymap
 
-  if km.accept then
-    vim.keymap.set('i', km.accept, function()
-      if M.is_visible() then
-        -- Schedule accept so buffer modification happens outside expr evaluation
-        vim.schedule(M.accept)
-        return ''
-      end
-      -- Fall through to original mapping
-      return vim.api.nvim_replace_termcodes(km.accept, true, false, true)
-    end, { expr = true, noremap = true, silent = true, desc = 'Accept AI completion' })
+  local function set(key, fn, opts)
+    if not key then
+      return
+    end
+    vim.keymap.set('i', key, fn, opts)
+    prev_keymaps[#prev_keymaps + 1] = key
   end
 
-  if km.accept_line then
-    vim.keymap.set('i', km.accept_line, function()
-      if M.is_visible() then
-        vim.schedule(M.accept_line)
-        return ''
-      end
-      return vim.api.nvim_replace_termcodes(km.accept_line, true, false, true)
-    end, { expr = true, noremap = true, silent = true, desc = 'Accept AI completion line' })
-  end
+  set(km.accept, function()
+    if M.is_visible() then
+      -- Schedule accept so buffer modification happens outside expr evaluation
+      vim.schedule(M.accept)
+      return ''
+    end
+    -- Fall through to original mapping
+    return vim.api.nvim_replace_termcodes(km.accept, true, false, true)
+  end, { expr = true, noremap = true, silent = true, desc = 'Accept AI completion' })
 
-  if km.accept_paragraph then
-    vim.keymap.set('i', km.accept_paragraph, function()
-      if M.is_visible() then
-        vim.schedule(M.accept_paragraph)
-        return ''
-      end
-      return vim.api.nvim_replace_termcodes(km.accept_paragraph, true, false, true)
-    end, { expr = true, noremap = true, silent = true, desc = 'Accept AI completion paragraph' })
-  end
+  set(km.accept_line, function()
+    if M.is_visible() then
+      vim.schedule(M.accept_line)
+      return ''
+    end
+    return vim.api.nvim_replace_termcodes(km.accept_line, true, false, true)
+  end, { expr = true, noremap = true, silent = true, desc = 'Accept AI completion line' })
 
-  if km.dismiss then
-    vim.keymap.set('i', km.dismiss, function()
+  set(km.accept_paragraph, function()
+    if M.is_visible() then
+      vim.schedule(M.accept_paragraph)
+      return ''
+    end
+    return vim.api.nvim_replace_termcodes(km.accept_paragraph, true, false, true)
+  end, { expr = true, noremap = true, silent = true, desc = 'Accept AI completion paragraph' })
+
+  set(km.dismiss, function()
+    M.dismiss()
+  end, { noremap = true, silent = true, desc = 'Dismiss AI completion' })
+
+  set(km.next, function()
+    M.next()
+  end, { noremap = true, silent = true, desc = 'Next AI completion' })
+
+  set(km.prev, function()
+    M.prev()
+  end, { noremap = true, silent = true, desc = 'Previous AI completion' })
+
+  set(km.regenerate, function()
+    M.regenerate()
+  end, { noremap = true, silent = true, desc = 'Regenerate AI completion' })
+
+  set(km.toggle_cmp, function()
+    local integrations = require('cassandra_ai.integrations')
+    if M.is_visible() then
+      -- Ghost text visible → dismiss it and let cmp show
       M.dismiss()
-    end, { noremap = true, silent = true, desc = 'Dismiss AI completion' })
-  end
-
-  if km.next then
-    vim.keymap.set('i', km.next, function()
-      M.next()
-    end, { noremap = true, silent = true, desc = 'Next AI completion' })
-  end
-
-  if km.prev then
-    vim.keymap.set('i', km.prev, function()
-      M.prev()
-    end, { noremap = true, silent = true, desc = 'Previous AI completion' })
-  end
-
-  if km.regenerate then
-    vim.keymap.set('i', km.regenerate, function()
-      M.regenerate()
-    end, { noremap = true, silent = true, desc = 'Regenerate AI completion' })
-  end
+      integrations.trigger_completion_menu()
+    elseif integrations.is_completion_menu_visible() then
+      -- Cmp menu visible → close it and trigger ghost text
+      integrations.close_completion_menus()
+      M.trigger()
+    end
+  end, { noremap = true, silent = true, desc = 'Toggle between AI completion and cmp' })
 end
 
 -- ---------------------------------------------------------------------------
@@ -1152,12 +1155,13 @@ end
 -- ---------------------------------------------------------------------------
 
 function M.setup(opts)
-  print('inline setup called')
+  logger.trace('inline setup called')
   -- Define highlight group
   vim.api.nvim_set_hl(0, 'CassandraAiInline', { link = opts.highlight, default = true })
 
   setup_autocmds()
   setup_keymaps()
+  require('cassandra_ai.integrations').setup()
 end
 
 return M
