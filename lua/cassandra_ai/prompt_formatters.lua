@@ -70,7 +70,7 @@ M.fim = function(lines_before, lines_after, opts, additional_context)
 end
 
 --- Registry of formatters that support additional context injection.
-M.supports_context = { [M.chat] = true }
+M.supports_context = { [M.chat] = true, [M.fim] = true }
 
 -- Backward-compatible formatters table with deprecation warnings
 M.formatters = setmetatable({
