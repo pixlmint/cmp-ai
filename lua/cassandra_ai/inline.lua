@@ -834,8 +834,8 @@ function M.accept()
   clear_ghost_text()
 
   local cur_line = vim.api.nvim_buf_get_lines(bufnr, row - 1, row, false)[1] or ''
-  local before = vim.fn.strpart(cur_line, 0, col, 1)
-  local after_cursor = vim.fn.strpart(cur_line, col, vim.fn.strdisplaywidth(cur_line), 1)
+  local before = cur_line:sub(1, col)
+  local after_cursor = cur_line:sub(col + 1)
 
   local comp_lines = vim.split(text, '\n', { plain = true })
 
@@ -912,8 +912,8 @@ local function accept_n_lines(n)
   local col = cursor_pos[2] -- 0-indexed bytes
 
   local cur_line = vim.api.nvim_buf_get_lines(bufnr, row - 1, row, false)[1] or ''
-  local before = vim.fn.strpart(cur_line, 0, col, 1)
-  local after_cursor = vim.fn.strpart(cur_line, col, vim.fn.strdisplaywidth(cur_line), 1)
+  local before = cur_line:sub(1, col)
+  local after_cursor = cur_line:sub(col + 1)
 
   local new_lines = {}
   new_lines[1] = before .. comp_lines[1]
