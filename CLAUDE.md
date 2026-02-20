@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Completion Flow
 
 1. User types in insert mode -> `CursorMovedI` autocmd fires
-2. Debounce timer (150ms default) -> `inline.lua:trigger()`
+2. Debounce timer (150ms default) -> `suggest/init.lua:trigger()`
 3. Generation counter increments (stale request detection)
 4. Context extracted: `max_lines` before/after cursor via `nvim_buf_get_lines()`
 5. Context providers gather additional context in parallel (with timeout)
@@ -29,18 +29,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Key Design Patterns
 
-**Generation counter** (`inline.lua`): A monotonic counter incremented on each trigger. Every async callback checks `if my_gen ~= generation then return end` to discard responses from superseded requests.
+**Generation counter** (`suggest/state.lua`): A monotonic counter incremented on each trigger. Every async callback checks `if my_gen ~= state.generation then return end` to discard responses from superseded requests.
 
 **Provider interface**: All adapters inherit from `requests.lua` Service class, implement `:new(o, params)` and `:complete(lines_before, lines_after, cb, additional_context)`, return a `plenary.job` handle for cancellation.
 
 **Context provider interface**: Providers in `context/` inherit from `base.lua` BaseContextProvider, implement `:get_context(params, callback)`, `:is_available()`. The context manager (`context/init.lua`) gathers from all providers in parallel with configurable timeout, then merges results.
 
-**Config singleton**: `config.lua` stores state in a local `conf` table, dynamically loads adapters via `require('cassandra_ai.adapters.' .. provider_name)`, only reinitializes when provider changes. Configuration is now structured with nested `logging` and `telemetry` tables. The setup flow starts in `init.lua` which calls `config:setup()`, which in turn initializes the inline module.
+**Config singleton**: `config.lua` stores state in a local `conf` table, dynamically loads adapters via `require('cassandra_ai.adapters.' .. provider_name)`, only reinitializes when provider changes. Configuration is now structured with nested `logging` and `telemetry` tables. The setup flow starts in `init.lua` which calls `config:setup()`, which in turn initializes the suggest module.
 
 ### Core Components
 
-1. **Entry Point** (`lua/cassandra_ai/init.lua`): Calls `config:setup()` which initializes inline module and registers commands
-2. **Inline Completion** (`lua/cassandra_ai/inline.lua`): Core ghost text engine - trigger, render, accept/dismiss/navigate completions
+1. **Entry Point** (`lua/cassandra_ai/init.lua`): Calls `config:setup()` which initializes suggest module and registers commands
+2. **Suggestion Engine** (`lua/cassandra_ai/suggest/`): Core ghost text engine split into submodules — `init.lua` (orchestrator + public API), `state.lua` (shared mutable state), `renderer.lua` (extmark rendering), `postprocess.lua` (text transforms), `validation.lua` (deferred validation), `pipeline.lua` (request dispatch)
 3. **Configuration** (`lua/cassandra_ai/config.lua`): Singleton config with dynamic provider loading
 4. **Adapters** (`lua/cassandra_ai/adapters/*.lua`): Provider implementations. Ollama has special model management (`get_model()` queries `/api/ps` for loaded models)
 5. **Requests** (`lua/cassandra_ai/requests.lua`): Base HTTP class using curl via `plenary.job`, writes JSON to temp files

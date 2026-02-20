@@ -17,7 +17,7 @@ T['compute_overlap_threshold'] = new_set()
 
 -- Helper: call compute_overlap_threshold in the child process
 local function threshold(text, overlap)
-  return child.lua_get(string.format([[require('cassandra_ai.inline')._compute_overlap_threshold(%q, %q)]], text, overlap))
+  return child.lua_get(string.format([[require('cassandra_ai.suggest')._compute_overlap_threshold(%q, %q)]], text, overlap))
 end
 
 -- Words use vim's iskeyword, so "local " is 1 word,
@@ -87,13 +87,13 @@ end
 
 -- Not enough words: returns nil
 T['compute_overlap_threshold']['not enough words returns nil'] = function()
-  local result = child.lua_get([[require('cassandra_ai.inline')._compute_overlap_threshold('hello', '2+1')]])
+  local result = child.lua_get([[require('cassandra_ai.suggest')._compute_overlap_threshold('hello', '2+1')]])
   h.eq(result, vim.NIL)
 end
 
 -- Single word with "1" (no trailing content) returns nil
 T['compute_overlap_threshold']['single word no boundary returns nil'] = function()
-  local result = child.lua_get([[require('cassandra_ai.inline')._compute_overlap_threshold('hello', '1')]])
+  local result = child.lua_get([[require('cassandra_ai.suggest')._compute_overlap_threshold('hello', '1')]])
   h.eq(result, vim.NIL)
 end
 
