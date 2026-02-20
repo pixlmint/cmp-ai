@@ -1063,79 +1063,81 @@ end
 -- Keymaps
 -- ---------------------------------------------------------------------------
 
+local prev_keymaps = {}
+
+local function cleanup_keymaps()
+  for _, key in ipairs(prev_keymaps) do
+    pcall(vim.keymap.del, 'i', key)
+  end
+  prev_keymaps = {}
+end
+
 local function setup_keymaps()
+  cleanup_keymaps()
   local km = conf:get('inline').keymap
 
-  if km.accept then
-    vim.keymap.set('i', km.accept, function()
-      if M.is_visible() then
-        -- Schedule accept so buffer modification happens outside expr evaluation
-        vim.schedule(M.accept)
-        return ''
-      end
-      -- Fall through to original mapping
-      return vim.api.nvim_replace_termcodes(km.accept, true, false, true)
-    end, { expr = true, noremap = true, silent = true, desc = 'Accept AI completion' })
+  local function set(key, fn, opts)
+    if not key then
+      return
+    end
+    vim.keymap.set('i', key, fn, opts)
+    prev_keymaps[#prev_keymaps + 1] = key
   end
 
-  if km.accept_line then
-    vim.keymap.set('i', km.accept_line, function()
-      if M.is_visible() then
-        vim.schedule(M.accept_line)
-        return ''
-      end
-      return vim.api.nvim_replace_termcodes(km.accept_line, true, false, true)
-    end, { expr = true, noremap = true, silent = true, desc = 'Accept AI completion line' })
-  end
+  set(km.accept, function()
+    if M.is_visible() then
+      -- Schedule accept so buffer modification happens outside expr evaluation
+      vim.schedule(M.accept)
+      return ''
+    end
+    -- Fall through to original mapping
+    return vim.api.nvim_replace_termcodes(km.accept, true, false, true)
+  end, { expr = true, noremap = true, silent = true, desc = 'Accept AI completion' })
 
-  if km.accept_paragraph then
-    vim.keymap.set('i', km.accept_paragraph, function()
-      if M.is_visible() then
-        vim.schedule(M.accept_paragraph)
-        return ''
-      end
-      return vim.api.nvim_replace_termcodes(km.accept_paragraph, true, false, true)
-    end, { expr = true, noremap = true, silent = true, desc = 'Accept AI completion paragraph' })
-  end
+  set(km.accept_line, function()
+    if M.is_visible() then
+      vim.schedule(M.accept_line)
+      return ''
+    end
+    return vim.api.nvim_replace_termcodes(km.accept_line, true, false, true)
+  end, { expr = true, noremap = true, silent = true, desc = 'Accept AI completion line' })
 
-  if km.dismiss then
-    vim.keymap.set('i', km.dismiss, function()
+  set(km.accept_paragraph, function()
+    if M.is_visible() then
+      vim.schedule(M.accept_paragraph)
+      return ''
+    end
+    return vim.api.nvim_replace_termcodes(km.accept_paragraph, true, false, true)
+  end, { expr = true, noremap = true, silent = true, desc = 'Accept AI completion paragraph' })
+
+  set(km.dismiss, function()
+    M.dismiss()
+  end, { noremap = true, silent = true, desc = 'Dismiss AI completion' })
+
+  set(km.next, function()
+    M.next()
+  end, { noremap = true, silent = true, desc = 'Next AI completion' })
+
+  set(km.prev, function()
+    M.prev()
+  end, { noremap = true, silent = true, desc = 'Previous AI completion' })
+
+  set(km.regenerate, function()
+    M.regenerate()
+  end, { noremap = true, silent = true, desc = 'Regenerate AI completion' })
+
+  set(km.toggle_cmp, function()
+    local integrations = require('cassandra_ai.integrations')
+    if M.is_visible() then
+      -- Ghost text visible → dismiss it and let cmp show
       M.dismiss()
-    end, { noremap = true, silent = true, desc = 'Dismiss AI completion' })
-  end
-
-  if km.next then
-    vim.keymap.set('i', km.next, function()
-      M.next()
-    end, { noremap = true, silent = true, desc = 'Next AI completion' })
-  end
-
-  if km.prev then
-    vim.keymap.set('i', km.prev, function()
-      M.prev()
-    end, { noremap = true, silent = true, desc = 'Previous AI completion' })
-  end
-
-  if km.regenerate then
-    vim.keymap.set('i', km.regenerate, function()
-      M.regenerate()
-    end, { noremap = true, silent = true, desc = 'Regenerate AI completion' })
-  end
-
-  if km.toggle_cmp then
-    vim.keymap.set('i', km.toggle_cmp, function()
-      local integrations = require('cassandra_ai.integrations')
-      if M.is_visible() then
-        -- Ghost text visible → dismiss it and let cmp show
-        M.dismiss()
-        integrations.trigger_completion_menu()
-      elseif integrations.is_completion_menu_visible() then
-        -- Cmp menu visible → close it and trigger ghost text
-        integrations.close_completion_menus()
-        M.trigger()
-      end
-    end, { noremap = true, silent = true, desc = 'Toggle between AI completion and cmp' })
-  end
+      integrations.trigger_completion_menu()
+    elseif integrations.is_completion_menu_visible() then
+      -- Cmp menu visible → close it and trigger ghost text
+      integrations.close_completion_menus()
+      M.trigger()
+    end
+  end, { noremap = true, silent = true, desc = 'Toggle between AI completion and cmp' })
 end
 
 -- ---------------------------------------------------------------------------
