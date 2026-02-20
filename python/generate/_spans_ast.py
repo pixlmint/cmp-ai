@@ -1,32 +1,23 @@
 import random
 
-from fim.deps import HAS_TREE_SITTER, PHP_LANGUAGE, Parser
+from fim.deps import HAS_TREE_SITTER, Parser
 from fim.types import CodeSpan
-from ._spans_regex import extract_spans_regex
-
-# Node types eligible for single-node masking
-AST_ELIGIBLE_TYPES = frozenset({
-    "expression_statement", "return_statement", "if_statement",
-    "for_statement", "foreach_statement", "while_statement",
-    "switch_statement", "try_statement", "function_definition",
-    "method_declaration", "class_declaration", "assignment_expression",
-    "function_call_expression", "member_call_expression",
-    "object_creation_expression", "array_creation_expression",
-    "match_expression", "arrow_function", "anonymous_function",
-    "compound_statement", "argument", "formal_parameters",
-    "property_declaration", "const_declaration", "echo_statement",
-    "throw_expression", "yield_expression", "binary_expression",
-    "conditional_expression", "subscript_expression", "cast_expression",
-})
 
 
-def _collect_eligible_nodes(node: "Node") -> list["Node"]:
+def _resolve_lang_config(lang_config):
+    if lang_config is None:
+        from fim.language import PHP
+        return PHP
+    return lang_config
+
+
+def _collect_eligible_nodes(node: "Node", eligible_types: frozenset[str]) -> list["Node"]:
     """Walk tree and collect named nodes eligible for masking."""
     results = []
-    if node.type in AST_ELIGIBLE_TYPES and node.end_byte - node.start_byte > 5:
+    if node.type in eligible_types and node.end_byte - node.start_byte > 5:
         results.append(node)
     for child in node.children:
-        results.extend(_collect_eligible_nodes(child))
+        results.extend(_collect_eligible_nodes(child, eligible_types))
     return results
 
 
@@ -71,17 +62,20 @@ def _aligned_span_from_random(
     return best_range
 
 
-def extract_spans_ast(source: str) -> list[CodeSpan]:
+def extract_spans_ast(source: str, lang_config=None) -> list[CodeSpan]:
     """
     Extract code spans using tree-sitter AST (AST-FIM paper).
     50/50 split between single-node masking and aligned-span masking.
     Returns ~1 span per 500 bytes, with 90% AST / 10% random-char ratio
     applied in generate_fim_examples().
     """
-    if not HAS_TREE_SITTER:
-        return extract_spans_regex(source)
+    lc = _resolve_lang_config(lang_config)
 
-    parser = Parser(PHP_LANGUAGE)
+    if lc.ts_language is None:
+        from ._spans_regex import extract_spans_regex
+        return extract_spans_regex(source, lang_config=lc)
+
+    parser = Parser(lc.ts_language)
     source_bytes = source.encode("utf-8")
     tree = parser.parse(source_bytes)
     root = tree.root_node
@@ -97,7 +91,7 @@ def extract_spans_ast(source: str) -> list[CodeSpan]:
     spans = []
 
     # --- Single-Node Masking ---
-    eligible = _collect_eligible_nodes(root)
+    eligible = _collect_eligible_nodes(root, lc.ast_eligible_types)
     if eligible:
         # Weight by byte size
         weights = [max(1, n.end_byte - n.start_byte) for n in eligible]
@@ -110,7 +104,7 @@ def extract_spans_ast(source: str) -> list[CodeSpan]:
             end_line = node.end_point[0]
             name = ""
             for child in node.children:
-                if child.type == "name":
+                if child.type == lc.ast_name_node_type:
                     name = source_bytes[child.start_byte:child.end_byte].decode("utf-8", errors="replace")
                     break
             spans.append(CodeSpan(

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fim.deps import HAS_TREE_SITTER, PHP_LANGUAGE, Parser
+from fim.deps import Parser
 from fim.types import CodeSpan, FIMExample, BM25Index, MIN_MIDDLE_WORDS
 from ._spans_ast import extract_spans_ast
 from ._spans_regex import extract_spans_regex
@@ -12,6 +12,13 @@ from ._spans_devbehavior import (
 )
 from fim.crossfile import build_cross_file_context
 from fim.bm25 import retrieve_bm25_context
+
+
+def _resolve_lang_config(lang_config):
+    if lang_config is None:
+        from fim.language import PHP
+        return PHP
+    return lang_config
 
 
 def _make_example_from_byte_span(
@@ -117,9 +124,10 @@ def generate_fim_examples(
     max_total_chars: int = 8192,
     use_ast: bool = True,
     bm25_index: BM25Index | None = None,
+    lang_config=None,
 ) -> list[FIMExample]:
     """
-    Generate FIM training examples from a single PHP file.
+    Generate FIM training examples from a single source file.
 
     Span distribution (per AST-FIM + SynthCoder papers):
       ~66% AST spans (single-node + aligned-span)
@@ -129,6 +137,7 @@ def generate_fim_examples(
     When use_ast=False or tree-sitter unavailable, falls back to regex spans
     with char-level random splits.
     """
+    lc = _resolve_lang_config(lang_config)
     lines = source.split("\n")
     examples = []
 
@@ -137,12 +146,11 @@ def generate_fim_examples(
     # Build cross-file context once per file
     xf_context = ""
     if cross_file and all_files:
-        xf_context = build_cross_file_context(filepath, all_files, root, source)
+        xf_context = build_cross_file_context(filepath, all_files, root, source, lang_config=lc)
 
     # Build BM25 context once per file (not per-span — the query is similar enough)
     bm25_file_ctx = ""
     if bm25_index is not None:
-        # Use a representative sample of the file as query
         file_query = source[:2000]
         bm25_file_ctx = retrieve_bm25_context(
             file_query, "", bm25_index, rel_path,
@@ -150,26 +158,26 @@ def generate_fim_examples(
 
     # Parse tree once for reuse across span generators
     tree_root = None
-    if use_ast and HAS_TREE_SITTER:
-        parser = Parser(PHP_LANGUAGE)
+    if use_ast and lc.ts_language is not None:
+        parser = Parser(lc.ts_language)
         tree = parser.parse(source.encode("utf-8"))
         tree_root = tree.root_node
 
     # --- Collect all spans ---
     all_spans: list[CodeSpan] = []
 
-    if use_ast and HAS_TREE_SITTER:
+    if use_ast and lc.ts_language is not None:
         # AST spans (~66% — from extract_spans_ast which has its own count scaling)
-        ast_spans = extract_spans_ast(source)
+        ast_spans = extract_spans_ast(source, lang_config=lc)
         all_spans.extend(ast_spans)
 
         # Developer behavior spans (~22%)
-        all_spans.extend(generate_incomplete_line_spans(source, tree_root))
-        all_spans.extend(generate_bracket_context_spans(source, tree_root))
-        all_spans.extend(generate_post_comment_spans(source, tree_root))
+        all_spans.extend(generate_incomplete_line_spans(source, tree_root, lang_config=lc))
+        all_spans.extend(generate_bracket_context_spans(source, tree_root, lang_config=lc))
+        all_spans.extend(generate_post_comment_spans(source, tree_root, lang_config=lc))
     else:
         # Regex fallback
-        all_spans.extend(extract_spans_regex(source))
+        all_spans.extend(extract_spans_regex(source, lang_config=lc))
 
     # Random char-level spans (~10%)
     char_spans = generate_char_level_splits(source)

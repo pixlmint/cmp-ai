@@ -10,7 +10,8 @@ from tqdm import tqdm
 
 from fim.deps import HAS_TREE_SITTER, HAS_BM25
 from fim.types import FIMConfig, FIM_CONFIGS, FIMExample
-from fim.discovery import find_php_files
+from fim.discovery import find_files
+from fim.language import get_language, registered_languages
 from fim.bm25 import build_bm25_index
 from ._fim import generate_fim_examples
 from ._quality import print_dataset_stats, compute_complexity_score, filter_low_quality_examples
@@ -19,7 +20,7 @@ from ._quality import print_dataset_stats, compute_complexity_score, filter_low_
 def build_argument_parser() -> argparse.ArgumentParser:
     """Build and return the CLI argument parser."""
     parser = argparse.ArgumentParser(
-        description="Build FIM training dataset from PHP codebase for LoRA fine-tuning",
+        description="Build FIM training dataset from source codebase for LoRA fine-tuning",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=textwrap.dedent("""\
             WORKFLOW:
@@ -42,9 +43,11 @@ def build_argument_parser() -> argparse.ArgumentParser:
         """),
     )
     parser.add_argument("project_root", type=Path,
-                        help="Root directory of your PHP project")
+                        help="Root directory of your project")
     parser.add_argument("--output", "-o", type=Path, default=Path("dataset"),
                         help="Output directory (default: dataset/)")
+    parser.add_argument("--language", default="php",
+                        help=f"Source language (default: php, available: {', '.join(registered_languages())})")
     parser.add_argument("--base-model", default="qwen2.5-coder",
                         choices=list(FIM_CONFIGS.keys()),
                         help="Base model family (determines FIM token format)")
@@ -85,25 +88,25 @@ def build_argument_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def discover_files(args) -> tuple[list[Path], list[Path]]:
-    """Discover PHP files and build the context pool. Returns (php_files, context_pool)."""
-    php_files = find_php_files(args.project_root, tested_only=args.tested_only)
-    print(f"Found {len(php_files)} PHP source files")
+def discover_files(args, lang_config) -> tuple[list[Path], list[Path]]:
+    """Discover source files and build the context pool. Returns (source_files, context_pool)."""
+    source_files = find_files(args.project_root, lang_config, tested_only=args.tested_only)
+    print(f"Found {len(source_files)} {lang_config.name} source files")
 
-    if not php_files:
+    if not source_files:
         print("No files found. Check your project root and filters.")
         sys.exit(1)
 
     # Discover files in --include-path dirs (used for cross-file context only)
     include_path_files: list[Path] = []
     for inc_dir in args.include_path:
-        inc_files = find_php_files(inc_dir)
-        print(f"Include path {inc_dir}: {len(inc_files)} PHP files")
+        inc_files = find_files(inc_dir, lang_config)
+        print(f"Include path {inc_dir}: {len(inc_files)} {lang_config.name} files")
         include_path_files.extend(inc_files)
 
     # Combined pool for cross-file context lookups
-    context_pool = php_files + include_path_files
-    return php_files, context_pool
+    context_pool = source_files + include_path_files
+    return source_files, context_pool
 
 
 def build_optional_bm25(args, context_pool):
@@ -120,12 +123,12 @@ def build_optional_bm25(args, context_pool):
     return bm25_index
 
 
-def generate_all_examples(args, php_files, context_pool, bm25_index, use_ast):
+def generate_all_examples(args, source_files, context_pool, bm25_index, use_ast, lang_config):
     """Run the per-file generation loop. Returns (all_examples, file_complexity)."""
     file_complexity: dict[str, float] = {}
     all_examples = []
 
-    for filepath in tqdm(php_files):
+    for filepath in tqdm(source_files):
         try:
             source = filepath.read_text(encoding="utf-8", errors="replace")
         except Exception as e:
@@ -138,7 +141,7 @@ def generate_all_examples(args, php_files, context_pool, bm25_index, use_ast):
 
         # Compute complexity score for the file
         rel_path = str(filepath.relative_to(args.project_root)) if args.project_root in filepath.parents else str(filepath)
-        score = compute_complexity_score(source)
+        score = compute_complexity_score(source, lang_config=lang_config)
         file_complexity[rel_path] = score
 
         examples = generate_fim_examples(
@@ -151,6 +154,7 @@ def generate_all_examples(args, php_files, context_pool, bm25_index, use_ast):
             max_total_chars=args.max_total_chars,
             use_ast=use_ast,
             bm25_index=bm25_index,
+            lang_config=lang_config,
         )
 
         # Assign complexity scores
@@ -198,7 +202,7 @@ def preview_examples(examples, count, fim_config):
         print(f"Total formatted length: {len(formatted)} chars")
 
 
-def write_output(args, all_examples, fim_config, use_ast, rejected, php_files):
+def write_output(args, all_examples, fim_config, use_ast, rejected, source_files, lang_config):
     """Split into train/val and write JSONL + metadata files."""
     # Shuffle and split (unless curriculum mode, which keeps the sort order)
     if not args.curriculum:
@@ -228,12 +232,13 @@ def write_output(args, all_examples, fim_config, use_ast, rejected, php_files):
     kinds = Counter(ex.span_kind for ex in train_examples + val_examples)
     complexity_scores = [ex.complexity_score for ex in train_examples + val_examples if ex.complexity_score > 0]
     meta = {
+        "language": lang_config.name,
         "base_model": args.base_model,
         "fim_tokens": asdict(fim_config),
         "project_root": str(args.project_root),
         "cross_file_context": args.cross_file_context,
         "bm25_context": args.bm25_context,
-        "ast_fim": use_ast and HAS_TREE_SITTER,
+        "ast_fim": use_ast and lang_config.ts_language is not None,
         "quality_filter": args.quality_filter,
         "quality_filter_rejected": rejected,
         "curriculum": args.curriculum,
@@ -243,7 +248,7 @@ def write_output(args, all_examples, fim_config, use_ast, rejected, php_files):
         "max_total_chars": args.max_total_chars,
         "train_examples": len(train_examples),
         "val_examples": len(val_examples),
-        "total_files": len(php_files),
+        "total_files": len(source_files),
         "seed": args.seed,
         "span_type_distribution": dict(kinds.most_common()),
         "complexity_score_stats": {
@@ -270,20 +275,24 @@ def main():
     random.seed(args.seed)
     fim_config = FIM_CONFIGS[args.base_model]
 
+    # Resolve language config
+    lang_config = get_language(args.language)
+
     # Resolve AST mode: auto-detect if not explicitly set
-    use_ast = args.ast_fim if args.ast_fim is not None else HAS_TREE_SITTER
+    use_ast = args.ast_fim if args.ast_fim is not None else (lang_config.ts_language is not None)
 
     print(f"Project root: {args.project_root}")
+    print(f"Language:     {lang_config.name}")
     print(f"Base model:   {args.base_model}")
-    print(f"AST-FIM:      {'enabled' if use_ast and HAS_TREE_SITTER else 'disabled (regex fallback)'}")
+    print(f"AST-FIM:      {'enabled' if use_ast and lang_config.ts_language is not None else 'disabled (regex fallback)'}")
     print(f"BM25 context: {'enabled' if args.bm25_context else 'disabled'}")
     print(f"FIM tokens:   {fim_config.prefix_tok} / "
           f"{fim_config.suffix_tok} / {fim_config.middle_tok}")
 
-    php_files, context_pool = discover_files(args)
+    source_files, context_pool = discover_files(args, lang_config)
     bm25_index = build_optional_bm25(args, context_pool)
     all_examples, file_complexity = generate_all_examples(
-        args, php_files, context_pool, bm25_index, use_ast,
+        args, source_files, context_pool, bm25_index, use_ast, lang_config,
     )
     all_examples, rejected = apply_postprocessing(args, all_examples)
 
@@ -293,4 +302,4 @@ def main():
         preview_examples(all_examples, args.preview, fim_config)
         return
 
-    write_output(args, all_examples, fim_config, use_ast, rejected, php_files)
+    write_output(args, all_examples, fim_config, use_ast, rejected, source_files, lang_config)

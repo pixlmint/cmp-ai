@@ -2,8 +2,15 @@ import math
 import re
 from collections import Counter
 
-from fim.deps import HAS_TREE_SITTER, PHP_LANGUAGE, Parser
+from fim.deps import HAS_TREE_SITTER, Parser
 from fim.types import FIMExample
+
+
+def _resolve_lang_config(lang_config):
+    if lang_config is None:
+        from fim.language import PHP
+        return PHP
+    return lang_config
 
 
 def print_dataset_stats(examples: list[FIMExample], rejected: int = 0):
@@ -53,26 +60,29 @@ def print_dataset_stats(examples: list[FIMExample], rejected: int = 0):
               f"mean: {sum(complexity_scores)/len(complexity_scores):.2f}")
 
 
-def compute_complexity_score(source: str) -> float:
+def compute_complexity_score(source: str, lang_config=None) -> float:
     """
-    Compute a complexity score for a PHP file based on AST identifier density.
+    Compute a complexity score for a source file based on AST identifier density.
     Higher = more complex code (more identifiers per byte).
     """
-    if not HAS_TREE_SITTER:
+    lc = _resolve_lang_config(lang_config)
+
+    if lc.ts_language is None:
         # Regex fallback: count identifiers roughly
         idents = re.findall(r"\b[a-zA-Z_]\w*\b", source)
         if not source:
             return 0.0
         return len(idents) / max(1, len(source)) * 100
 
-    parser = Parser(PHP_LANGUAGE)
+    parser = Parser(lc.ts_language)
     tree = parser.parse(source.encode("utf-8"))
 
     ident_count = 0
+    ident_node_types = lc.ast_ident_node_types
 
     def _count_idents(node):
         nonlocal ident_count
-        if node.type in ("name", "variable_name", "member_access_expression"):
+        if node.type in ident_node_types:
             ident_count += 1
         for child in node.children:
             _count_idents(child)

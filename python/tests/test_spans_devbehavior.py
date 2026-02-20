@@ -16,8 +16,9 @@ needs_tree_sitter = pytest.mark.skipif(
 
 def _parse_tree(source):
     """Parse PHP source and return tree root node."""
-    from fim.deps import Parser, PHP_LANGUAGE
-    parser = Parser(PHP_LANGUAGE)
+    from fim.deps import Parser
+    from fim.language import PHP
+    parser = Parser(PHP.ts_language)
     tree = parser.parse(source.encode("utf-8"))
     return tree.root_node
 

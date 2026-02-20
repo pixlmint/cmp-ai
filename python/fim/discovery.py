@@ -16,54 +16,52 @@ SKIP_PATTERNS = [
 ]
 
 
-def find_php_files(root: Path, tested_only: bool = False) -> list[Path]:
+def find_files(root: Path, lang_config, tested_only: bool = False) -> list[Path]:
     """
-    Find PHP source files worth training on.
-    Skips vendor, config, templates, and other low-signal files.
+    Find source files worth training on, using language-specific config
+    for extensions, skip rules, and test detection.
     """
-    php_files = []
+    source_files = []
     test_files = set()
 
     for dirpath, dirnames, filenames in os.walk(root):
-        # Prune skipped directories
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        dirnames[:] = [d for d in dirnames if d not in lang_config.skip_dirs]
 
         rel_dir = os.path.relpath(dirpath, root)
 
         for fname in filenames:
-            if not fname.endswith(".php"):
+            if not any(fname.endswith(ext) for ext in lang_config.extensions):
                 continue
 
             rel_path = os.path.join(rel_dir, fname)
 
-            # Track test files
-            if "test" in rel_path.lower() or "Test" in fname:
+            if lang_config.is_test_file(rel_path, fname):
                 test_files.add(rel_path)
-                # Don't include test files in training data by default —
-                # they're useful for validation but training on tests can
-                # teach the model to generate test boilerplate instead of
-                # actual logic
                 continue
 
-            # Skip low-signal patterns
-            if any(re.search(p, rel_path) for p in SKIP_PATTERNS):
+            if any(re.search(p, rel_path) for p in lang_config.skip_patterns):
                 continue
 
-            php_files.append(Path(dirpath) / fname)
+            source_files.append(Path(dirpath) / fname)
 
     if tested_only:
-        # Only keep files that have a corresponding test file
-        # Heuristic: MyClass.php → MyClassTest.php or Tests/MyClassTest.php
         tested_files = []
-        for f in php_files:
+        for f in source_files:
             stem = f.stem
-            has_test = any(
-                stem in t or f"{stem}Test" in t
-                for t in test_files
-            )
+            has_test = any(stem in t or f"{stem}Test" in t for t in test_files)
             if has_test:
                 tested_files.append(f)
-        print(f"  Filtered to {len(tested_files)}/{len(php_files)} files with tests")
+        print(f"  Filtered to {len(tested_files)}/{len(source_files)} files with tests")
         return tested_files
 
-    return php_files
+    return source_files
+
+
+def find_php_files(root: Path, tested_only: bool = False) -> list[Path]:
+    """
+    Find PHP source files worth training on.
+    Skips vendor, config, templates, and other low-signal files.
+    Backward-compatible alias for find_files() with PHP config.
+    """
+    from fim.language import PHP
+    return find_files(root, PHP, tested_only)
