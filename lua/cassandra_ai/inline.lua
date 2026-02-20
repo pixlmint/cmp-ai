@@ -632,7 +632,7 @@ end
 --- Gather additional context (if enabled) and dispatch the request.
 local function gather_and_dispatch(req, service, fmt, model_info)
   local context_manager = require('cassandra_ai.context')
-  local supports_context = (fmt == require('cassandra_ai.prompt_formatters').chat)
+  local supports_context = require('cassandra_ai.prompt_formatters').supports_context[fmt]
 
   if context_manager.is_enabled() and supports_context then
     logger.trace('gather_and_dispatch() -> collecting context')
