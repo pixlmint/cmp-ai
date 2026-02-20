@@ -46,6 +46,14 @@ function M.get_project_root(filepath)
     end
   end
 
+  -- Fall back to common project root markers
+  local root = vim.fs.root(filepath, { '.git', 'package.json', 'Cargo.toml', 'go.mod', 'pyproject.toml', 'Makefile', '.hg', 'flake.nix' })
+  if root then
+    root_cache[dir] = root
+    logger.trace('project: detected project root via filesystem markers: ' .. root)
+    return root
+  end
+
   root_cache[dir] = false
   return nil
 end
