@@ -57,8 +57,6 @@ local function safe_serialize_config(params)
       result[key] = safe_serialize_config(value) -- Recursive
     elseif value_type == 'string' or value_type == 'number' or value_type == 'boolean' then
       result[key] = value
-    elseif value_type == 'nil' then
-      -- Skip nil values
     else
       -- Thread, userdata, etc.
       result[key] = { __type = value_type }
