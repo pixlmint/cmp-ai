@@ -506,6 +506,133 @@ function M.setup()
             end
           end,
         },
+        debug = {
+          description = 'Show project root, config, server status, and context for current cursor',
+          execute = function(_)
+            local project = require('cassandra_ai.fimcontextserver.project')
+            local fcs = require('cassandra_ai.fimcontextserver')
+
+            local bufnr = vim.api.nvim_get_current_buf()
+            local filepath = vim.api.nvim_buf_get_name(bufnr)
+            local root = project.get_project_root(filepath)
+            local status = fcs.get_status()
+
+            local lines = {
+              '# fimcontextserver debug',
+              '',
+              '## Project',
+              'filepath: ' .. (filepath ~= '' and filepath or '(unnamed buffer)'),
+              'project_root: ' .. (root or '(none)'),
+              '',
+              '## Config',
+            }
+
+            if root then
+              local conf = project.get_config(root)
+              for _, line in ipairs(vim.split(vim.inspect(conf), '\n', { plain = true })) do
+                table.insert(lines, line)
+              end
+            else
+              table.insert(lines, '(no project root — cannot resolve config)')
+            end
+
+            table.insert(lines, '')
+            table.insert(lines, '## Server Status')
+            table.insert(lines, 'status: ' .. status.status)
+            table.insert(lines, 'server project_root: ' .. (status.project_root or '(none)'))
+            table.insert(lines, 'file_count: ' .. (status.file_count or '?'))
+            table.insert(lines, 'bm25_chunks: ' .. (status.bm25_chunks or '?'))
+            table.insert(lines, 'restart_count: ' .. (status.restart_count or 0))
+
+            local function show_popup(lines)
+              local popup_buf = vim.api.nvim_create_buf(false, true)
+              vim.api.nvim_buf_set_lines(popup_buf, 0, -1, false, lines)
+              vim.api.nvim_buf_set_option(popup_buf, 'modifiable', false)
+              vim.api.nvim_buf_set_option(popup_buf, 'buftype', 'nofile')
+              vim.api.nvim_buf_set_option(popup_buf, 'filetype', 'markdown')
+
+              local width = math.floor(vim.o.columns * 0.8)
+              local height = math.floor(vim.o.lines * 0.8)
+              local row = math.floor((vim.o.lines - height) / 2)
+              local col = math.floor((vim.o.columns - width) / 2)
+
+              local win = vim.api.nvim_open_win(popup_buf, true, {
+                relative = 'editor',
+                width = width,
+                height = height,
+                row = row,
+                col = col,
+                style = 'minimal',
+                border = 'rounded',
+                title = ' fimcontextserver debug ',
+                title_pos = 'center',
+              })
+
+              vim.api.nvim_win_set_option(win, 'wrap', true)
+              vim.api.nvim_win_set_option(win, 'linebreak', true)
+              vim.api.nvim_buf_set_keymap(popup_buf, 'n', 'q', ':close<CR>', { noremap = true, silent = true })
+            end
+
+            -- If no root or server not ready, show what we have
+            if not root or status.status ~= 'ready' then
+              table.insert(lines, '')
+              table.insert(lines, '## Context')
+              table.insert(lines, '(server not ready — cannot fetch context)')
+              table.insert(lines, '')
+              table.insert(lines, '---')
+              table.insert(lines, 'Press q to close')
+              show_popup(lines)
+              return
+            end
+
+            -- Fetch actual context
+            local cursor = vim.api.nvim_win_get_cursor(0)
+            local cursor_line = cursor[1] - 1
+            local cursor_col = cursor[2]
+            local all_lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+            local content = table.concat(all_lines, '\n')
+
+            local byte_offset = 0
+            for i = 1, cursor_line do
+              byte_offset = byte_offset + #all_lines[i] + 1
+            end
+            byte_offset = byte_offset + cursor_col
+
+            table.insert(lines, '')
+            table.insert(lines, '## Context Request')
+            table.insert(lines, 'cursor: line ' .. (cursor_line + 1) .. ', col ' .. cursor_col)
+            table.insert(lines, 'byte_offset: ' .. byte_offset)
+            table.insert(lines, 'content_length: ' .. #content)
+
+            fcs.request('getContext', {
+              filepath = filepath,
+              content = content,
+              cursor_offset = byte_offset,
+            }, function(result, err)
+              vim.schedule(function()
+                table.insert(lines, '')
+                table.insert(lines, '## Context Result')
+
+                if err then
+                  table.insert(lines, 'ERROR: ' .. (err.message or vim.inspect(err)))
+                elseif result and result.context and result.context ~= '' then
+                  table.insert(lines, 'length: ' .. #result.context .. ' chars')
+                  table.insert(lines, '')
+                  for _, line in ipairs(vim.split(result.context, '\n', { plain = true })) do
+                    table.insert(lines, line)
+                  end
+                else
+                  table.insert(lines, '(empty context)')
+                end
+
+                table.insert(lines, '')
+                table.insert(lines, '---')
+                table.insert(lines, 'Press q to close')
+                show_popup(lines)
+              end)
+            end)
+          end,
+        },
         reload = {
           description = 'Re-read .cassandra.json for the current project',
           execute = function(_)
