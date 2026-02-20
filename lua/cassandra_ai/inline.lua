@@ -1166,7 +1166,7 @@ end
 -- ---------------------------------------------------------------------------
 
 function M.setup(opts)
-  print('inline setup called')
+  logger.trace('inline setup called')
   -- Define highlight group
   vim.api.nvim_set_hl(0, 'CassandraAiInline', { link = opts.highlight, default = true })
 
