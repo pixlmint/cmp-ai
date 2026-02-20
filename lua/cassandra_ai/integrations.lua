@@ -5,6 +5,7 @@ local M = {}
 
 local close_fns = {}
 local visible_fns = {}
+local trigger_fns = {}
 
 local function is_enabled()
   local ic = conf:get('inline')
@@ -32,6 +33,9 @@ function M.setup()
       visible_fns.cmp = function()
         local ok, vis = pcall(cmp.visible)
         return ok and vis
+      end
+      trigger_fns.cmp = function()
+        pcall(cmp.complete)
       end
       -- When cmp menu opens, dismiss ghost text
       pcall(function()
@@ -63,6 +67,9 @@ function M.setup()
           return blink.is_visible and blink.is_visible()
         end)
         return ok and vis
+      end
+      trigger_fns.blink = function()
+        pcall(blink.show)
       end
       -- When blink menu opens, dismiss ghost text
       pcall(function()
@@ -106,6 +113,18 @@ function M.setup()
       end,
     })
   end)
+end
+
+function M.trigger_completion_menu()
+  if not is_enabled() then
+    return
+  end
+  for _, fn in pairs(trigger_fns) do
+    pcall(fn)
+    return
+  end
+  -- Fallback: trigger native insert-mode completion
+  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('<C-x><C-o>', true, false, true), 'n', false)
 end
 
 function M.close_completion_menus()

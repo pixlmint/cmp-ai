@@ -59,6 +59,7 @@ local conf = {
       next = '<M-]>',
       prev = '<M-[>',
       regenerate = '<C-<>',
+      toggle_cmp = '<M-x>',
     },
   },
 }

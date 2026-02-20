@@ -1140,6 +1140,21 @@ local function setup_keymaps()
       M.regenerate()
     end, { noremap = true, silent = true, desc = 'Regenerate AI completion' })
   end
+
+  if km.toggle_cmp then
+    vim.keymap.set('i', km.toggle_cmp, function()
+      local integrations = require('cassandra_ai.integrations')
+      if M.is_visible() then
+        -- Ghost text visible → dismiss it and let cmp show
+        M.dismiss()
+        integrations.trigger_completion_menu()
+      elseif integrations.is_completion_menu_visible() then
+        -- Cmp menu visible → close it and trigger ghost text
+        integrations.close_completion_menus()
+        M.trigger()
+      end
+    end, { noremap = true, silent = true, desc = 'Toggle between AI completion and cmp' })
+  end
 end
 
 -- ---------------------------------------------------------------------------
