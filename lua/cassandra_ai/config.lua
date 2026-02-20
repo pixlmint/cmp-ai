@@ -50,6 +50,7 @@ local conf = {
     deferred_idle_ms = 1000,
     auto_trigger_overlap = '1+1',
     highlight = 'Comment',
+    cmp_integration = true,
     keymap = {
       accept = '<Tab>',
       accept_line = '<M-l>',

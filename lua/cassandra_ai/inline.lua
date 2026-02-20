@@ -84,6 +84,8 @@ local function render_ghost_text(text)
     return
   end
 
+  require('cassandra_ai.integrations').close_completion_menus()
+
   local lines = vim.split(text, '\n', { plain = true })
   local row = cursor_pos[1] - 1 -- 0-indexed
   local col = cursor_pos[2]
@@ -986,6 +988,9 @@ local function debounced_trigger()
   if not ic.auto_trigger then
     return
   end
+  if require('cassandra_ai.integrations').is_completion_menu_visible() then
+    return
+  end
   if not debounce_timer then
     debounce_timer = vim.uv.new_timer()
   end
@@ -1148,6 +1153,7 @@ function M.setup(opts)
 
   setup_autocmds()
   setup_keymaps()
+  require('cassandra_ai.integrations').setup()
 end
 
 return M
