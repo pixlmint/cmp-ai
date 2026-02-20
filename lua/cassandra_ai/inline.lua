@@ -124,6 +124,8 @@ end
 local function cancel_debounce()
   if debounce_timer then
     debounce_timer:stop()
+    debounce_timer:close()
+    debounce_timer = nil
   end
 end
 
@@ -254,6 +256,8 @@ end
 local function cancel_validation_timer()
   if validation_idle_timer then
     validation_idle_timer:stop()
+    validation_idle_timer:close()
+    validation_idle_timer = nil
   end
 end
 
@@ -476,9 +480,7 @@ end
 
 reset_validation_idle_timer = function()
   cancel_validation_timer()
-  if not validation_idle_timer then
-    validation_idle_timer = vim.uv.new_timer()
-  end
+  validation_idle_timer = vim.uv.new_timer()
   local idle_ms = conf:get('inline').deferred_idle_ms
 
   local function show_completion()
@@ -971,9 +973,7 @@ local function debounced_trigger()
   if require('cassandra_ai.integrations').is_completion_menu_visible() then
     return
   end
-  if not debounce_timer then
-    debounce_timer = vim.uv.new_timer()
-  end
+  debounce_timer = vim.uv.new_timer()
   debounce_timer:start(
     ic.debounce_ms,
     0,
