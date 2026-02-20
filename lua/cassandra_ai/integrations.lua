@@ -83,8 +83,28 @@ function M.setup()
     end
 
     if not has_cmp and not has_blink then
-      logger.trace('integrations: no completion plugins detected')
+      logger.trace('integrations: no custom completion plugins detected, using native pum hooks')
     end
+
+    -- Hook native pum (covers coq_nvim, mini.completion, compl.nvim, etc.)
+    close_fns.pum = function()
+      if vim.fn.pumvisible() == 1 then
+        vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('<C-e>', true, false, true), 'n', false)
+      end
+    end
+
+    vim.api.nvim_create_autocmd('CompleteChanged', {
+      group = vim.api.nvim_create_augroup('cassandra_ai_pum', { clear = true }),
+      callback = function()
+        if is_enabled() and vim.fn.pumvisible() == 1 then
+          local inline = require('cassandra_ai.inline')
+          if inline.is_visible() then
+            logger.trace('integrations: native pum opened, dismissing ghost text')
+            inline.dismiss()
+          end
+        end
+      end,
+    })
   end)
 end
 
