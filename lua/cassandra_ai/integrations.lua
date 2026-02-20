@@ -8,7 +8,7 @@ local visible_fns = {}
 local trigger_fns = {}
 
 local function is_enabled()
-  local ic = conf:get('inline')
+  local ic = conf:get('suggest')
   return ic.cmp_integration ~= false
 end
 
@@ -41,10 +41,10 @@ function M.setup()
       pcall(function()
         cmp.event:on('menu_opened', function()
           if is_enabled() then
-            local inline = require('cassandra_ai.inline')
-            if inline.is_visible() then
+            local suggest = require('cassandra_ai.suggest')
+            if suggest.is_visible() then
               logger.trace('integrations: cmp menu opened, dismissing ghost text')
-              inline.dismiss()
+              suggest.dismiss()
             end
           end
         end)
@@ -78,10 +78,10 @@ function M.setup()
           group = vim.api.nvim_create_augroup('cassandra_ai_blink', { clear = true }),
           callback = function()
             if is_enabled() then
-              local inline = require('cassandra_ai.inline')
-              if inline.is_visible() then
+              local suggest = require('cassandra_ai.suggest')
+              if suggest.is_visible() then
                 logger.trace('integrations: blink menu opened, dismissing ghost text')
-                inline.dismiss()
+                suggest.dismiss()
               end
             end
           end,
@@ -104,10 +104,10 @@ function M.setup()
       group = vim.api.nvim_create_augroup('cassandra_ai_pum', { clear = true }),
       callback = function()
         if is_enabled() and vim.fn.pumvisible() == 1 then
-          local inline = require('cassandra_ai.inline')
-          if inline.is_visible() then
+          local suggest = require('cassandra_ai.suggest')
+          if suggest.is_visible() then
             logger.trace('integrations: native pum opened, dismissing ghost text')
-            inline.dismiss()
+            suggest.dismiss()
           end
         end
       end,

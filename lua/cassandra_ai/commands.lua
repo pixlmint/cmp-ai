@@ -318,21 +318,21 @@ function M.setup()
           end,
           execute = function(opts)
             local conf = require('cassandra_ai.config')
-            local inline = conf:get('inline')
+            local suggest = conf:get('suggest')
             local action = opts[1]
 
             if action == 'toggle' then
-              inline.auto_trigger = not inline.auto_trigger
+              suggest.auto_trigger = not suggest.auto_trigger
             elseif action == 'enable' then
-              inline.auto_trigger = true
+              suggest.auto_trigger = true
             elseif action == 'disable' then
-              inline.auto_trigger = false
+              suggest.auto_trigger = false
             else
               vim.notify('Usage: :Cassy config auto_trigger toggle|enable|disable', vim.log.levels.ERROR)
               return
             end
 
-            vim.notify('auto_trigger: ' .. (inline.auto_trigger and 'enabled' or 'disabled'), vim.log.levels.INFO)
+            vim.notify('auto_trigger: ' .. (suggest.auto_trigger and 'enabled' or 'disabled'), vim.log.levels.INFO)
           end,
         },
         telemetry = {

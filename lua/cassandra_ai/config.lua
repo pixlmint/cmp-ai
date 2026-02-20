@@ -55,8 +55,8 @@ local conf = {
   -- Per-project configuration overrides (keyed by project root path)
   projects = {},
 
-  -- Inline completion configuration (managed by inline.lua)
-  inline = {
+  -- Suggestion completion configuration (managed by suggest/)
+  suggest = {
     debounce_ms = 150,
     auto_trigger = true,
     deferred_validation = true,
@@ -97,7 +97,7 @@ function M:setup(params)
 
   logger.trace('config:setup()')
 
-  require('cassandra_ai.inline').setup(conf.inline)
+  require('cassandra_ai.suggest').setup(conf.suggest)
 
   -- Determine the new provider name
   local new_provider_name = type(conf.provider) == 'string' and conf.provider or conf.provider.name
