@@ -165,6 +165,27 @@ function M:setup(params)
       logger.debug('auto-registering fimcontextserver context provider')
       context_manager.register_provider({ name = 'fimcontextserver', opts = conf.fimcontextserver })
     end
+    -- Auto-start fimcontextserver if current project is registered
+    vim.schedule(function()
+      local project = require('cassandra_ai.fimcontextserver.project')
+      local filepath = vim.api.nvim_buf_get_name(0)
+      if filepath == '' then
+        filepath = vim.fn.getcwd() .. '/.'
+      end
+      local root = project.is_registered_project(filepath)
+      if root then
+        local fcs = require('cassandra_ai.fimcontextserver')
+        local proj_conf = project.get_config(root)
+        logger.info('fimcontextserver: auto-starting for registered project ' .. root)
+        fcs.get_or_start(root, proj_conf, function(ok)
+          if ok then
+            logger.info('fimcontextserver: auto-start complete')
+          else
+            logger.warn('fimcontextserver: auto-start failed')
+          end
+        end)
+      end
+    end)
   end
 
   logger.debug('cassandra-ai setup complete')

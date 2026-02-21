@@ -58,6 +58,36 @@ function M.get_project_root(filepath)
   return nil
 end
 
+--- Check if filepath belongs to a registered project (has .cassandra.json or is in config.projects)
+--- Unlike get_project_root(), this skips the generic filesystem marker fallback (.git, etc.)
+--- @param filepath string Absolute file path
+--- @return string|nil project_root
+function M.is_registered_project(filepath)
+  if not filepath or filepath == '' then
+    return nil
+  end
+
+  local dir = vim.fn.fnamemodify(filepath, ':h')
+
+  -- Walk up looking for .cassandra.json
+  local cassandra_root = vim.fn.findfile('.cassandra.json', dir .. ';')
+  if cassandra_root ~= '' then
+    local root = vim.fn.fnamemodify(cassandra_root, ':h')
+    return root
+  end
+
+  -- Check if filepath is under any known project root from plugin config
+  local conf = require('cassandra_ai.config')
+  local projects = conf:get('projects') or {}
+  for root, _ in pairs(projects) do
+    if vim.startswith(filepath, root .. '/') then
+      return root
+    end
+  end
+
+  return nil
+end
+
 --- Read and parse .cassandra.json from a project root
 --- @param project_root string
 --- @return table|nil parsed config
