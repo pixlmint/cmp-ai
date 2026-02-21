@@ -608,6 +608,7 @@ function M.setup()
               filepath = filepath,
               content = content,
               cursor_offset = byte_offset,
+              debug = true,
             }, function(result, err)
               vim.schedule(function()
                 table.insert(lines, '')

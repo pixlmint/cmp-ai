@@ -124,3 +124,60 @@ class TestBuildCrossFileContext:
         target.write_text(source)
         ctx = build_cross_file_context(target, [target], tmp_path, source)
         assert ctx == ""
+
+
+class TestBuildCrossFileContextDebug:
+    def test_debug_returns_tuple(self, tmp_path, dependency_target_php, dependency_provider_php):
+        target = tmp_path / "UserController.php"
+        target.write_text(dependency_target_php)
+        provider = tmp_path / "UserService.php"
+        provider.write_text(dependency_provider_php)
+        all_files = [target, provider]
+
+        result = build_cross_file_context(target, all_files, tmp_path, dependency_target_php, debug=True)
+        assert isinstance(result, tuple)
+        ctx, debug_info = result
+        assert isinstance(ctx, str)
+        assert len(ctx) > 0
+        assert "UserService.php" in debug_info["related_files"]
+        assert isinstance(debug_info["referenced_symbols"], set)
+        assert len(debug_info["signatures"]) > 0
+        assert debug_info["signatures"][0]["included"] is True
+        assert debug_info["budget"]["used_chars"] > 0
+        assert debug_info["budget"]["max_chars"] > 0
+
+    def test_debug_false_returns_str(self, tmp_path, dependency_target_php, dependency_provider_php):
+        target = tmp_path / "UserController.php"
+        target.write_text(dependency_target_php)
+        provider = tmp_path / "UserService.php"
+        provider.write_text(dependency_provider_php)
+        all_files = [target, provider]
+
+        result = build_cross_file_context(target, all_files, tmp_path, dependency_target_php, debug=False)
+        assert isinstance(result, str)
+
+    def test_debug_empty_when_no_deps(self, tmp_path):
+        source = "<?php\nclass Isolated {}\n"
+        target = tmp_path / "Isolated.php"
+        target.write_text(source)
+        ctx, debug_info = build_cross_file_context(target, [target], tmp_path, source, debug=True)
+        assert ctx == ""
+        assert debug_info["related_files"] == []
+        assert debug_info["budget"]["used_chars"] == 0
+
+    def test_debug_budget_excludes_over_limit(self, tmp_path, dependency_target_php, dependency_provider_php):
+        target = tmp_path / "UserController.php"
+        target.write_text(dependency_target_php)
+        provider = tmp_path / "UserService.php"
+        provider.write_text(dependency_provider_php)
+        all_files = [target, provider]
+
+        # Tiny budget to force exclusion
+        result = build_cross_file_context(target, all_files, tmp_path, dependency_target_php, max_tokens=1, debug=True)
+        _, debug_info = result
+        # Either no signatures included, or some excluded
+        if debug_info["signatures"]:
+            excluded = [s for s in debug_info["signatures"] if not s["included"]]
+            included = [s for s in debug_info["signatures"] if s["included"]]
+            # With max_tokens=1 (4 chars), most signatures should be excluded
+            assert len(excluded) > 0 or len(included) == 0

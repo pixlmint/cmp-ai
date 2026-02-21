@@ -84,3 +84,74 @@ class TestRetrieveBm25Context:
         )
         # Should return something or empty, but not crash
         assert isinstance(ctx, str)
+
+
+class TestRetrieveBm25ContextDebug:
+    def _make_index(self, tmp_path):
+        f1 = tmp_path / "UserService.php"
+        f1.write_text(
+            "<?php\n\nclass UserService {\n\n"
+            "    public function findUser(int $id): ?User {\n"
+            "        return $this->repo->find($id);\n"
+            "    }\n\n"
+            "    public function deleteUser(int $id): void {\n"
+            "        $this->repo->delete($id);\n"
+            "    }\n}\n"
+        )
+        f2 = tmp_path / "OrderService.php"
+        f2.write_text(
+            "<?php\n\nclass OrderService {\n\n"
+            "    public function createOrder(array $items): Order {\n"
+            "        $order = new Order();\n"
+            "        foreach ($items as $item) {\n"
+            "            $order->addItem($item);\n"
+            "        }\n"
+            "        return $order;\n"
+            "    }\n}\n"
+        )
+        return build_bm25_index([f1, f2], tmp_path)
+
+    def test_debug_returns_tuple(self, tmp_path):
+        idx = self._make_index(tmp_path)
+        assert idx is not None
+        result = retrieve_bm25_context(
+            "findUser", "", idx, "OrderService.php", debug=True
+        )
+        assert isinstance(result, tuple)
+        ctx, debug_info = result
+        assert isinstance(ctx, str)
+        assert len(debug_info["query_tokens"]) > 0
+        assert "finduser" in debug_info["query_tokens"]
+        assert debug_info["budget"]["max_chars"] > 0
+
+    def test_debug_false_returns_str(self, tmp_path):
+        idx = self._make_index(tmp_path)
+        assert idx is not None
+        result = retrieve_bm25_context(
+            "findUser", "", idx, "OrderService.php", debug=False
+        )
+        assert isinstance(result, str)
+
+    def test_debug_scored_chunks_have_scores(self, tmp_path):
+        idx = self._make_index(tmp_path)
+        assert idx is not None
+        ctx, debug_info = retrieve_bm25_context(
+            "findUser", "", idx, "OrderService.php", debug=True
+        )
+        if debug_info["scored_chunks"]:
+            chunk = debug_info["scored_chunks"][0]
+            assert "file" in chunk
+            assert "score" in chunk
+            assert "selected" in chunk
+            assert "length" in chunk
+            assert chunk["selected"] is True
+
+    def test_debug_empty_query(self, tmp_path):
+        idx = self._make_index(tmp_path)
+        assert idx is not None
+        ctx, debug_info = retrieve_bm25_context(
+            "", "", idx, "Other.php", debug=True
+        )
+        assert ctx == ""
+        assert debug_info["query_tokens"] == []
+        assert debug_info["scored_chunks"] == []

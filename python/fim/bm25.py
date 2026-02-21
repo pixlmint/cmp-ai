@@ -73,13 +73,19 @@ def retrieve_bm25_context(
     filepath: str,
     max_tokens: int = 1024,
     top_k: int = 5,
-) -> str:
+    debug: bool = False,
+) -> str | tuple[str, dict]:
     """
     Retrieve relevant code chunks from other files using BM25.
     Query = span text + surrounding lines. Excludes chunks from same file.
+
+    When debug=True, returns (context_str, debug_info) with diagnostic details.
     """
     query = _tokenize_code(span_text + " " + adjacent_context)
+    char_budget = max_tokens * 4
     if not query:
+        if debug:
+            return "", {"query_tokens": [], "scored_chunks": [], "budget": {"used_chars": 0, "max_chars": char_budget}}
         return ""
 
     scores = index.bm25.get_scores(query)
@@ -104,20 +110,36 @@ def retrieve_bm25_context(
             break
 
     if not selected:
+        if debug:
+            return "", {"query_tokens": query, "scored_chunks": [], "budget": {"used_chars": 0, "max_chars": char_budget}}
         return ""
 
     # Concatenate up to token budget
-    char_budget = max_tokens * 4
     parts = []
     total = 0
-    for i, _ in selected:
+    chunk_details = []
+    for i, score in selected:
         chunk = f"// --- {index.chunk_files[i]} ---\n{index.chunks[i]}"
         if total + len(chunk) > char_budget:
+            if debug:
+                chunk_details.append({"file": index.chunk_files[i], "score": round(float(score), 2), "selected": False, "length": len(chunk)})
             break
         parts.append(chunk)
         total += len(chunk)
+        if debug:
+            chunk_details.append({"file": index.chunk_files[i], "score": round(float(score), 2), "selected": True, "length": len(chunk)})
 
     if not parts:
+        if debug:
+            return "", {"query_tokens": query, "scored_chunks": chunk_details, "budget": {"used_chars": 0, "max_chars": char_budget}}
         return ""
 
-    return "\n\n".join(parts) + "\n\n"
+    result = "\n\n".join(parts) + "\n\n"
+    if debug:
+        debug_info = {
+            "query_tokens": query,
+            "scored_chunks": chunk_details,
+            "budget": {"used_chars": total, "max_chars": char_budget},
+        }
+        return result, debug_info
+    return result

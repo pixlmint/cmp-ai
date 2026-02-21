@@ -67,14 +67,19 @@ def build_cross_file_context(
     source: str,
     max_tokens: int = 1024,
     lang_config=None,
-) -> str:
+    debug: bool = False,
+) -> str | tuple[str, dict]:
     """
     Build dependency-based cross-file context string to prepend to the FIM prefix.
     Filters signatures to only include symbols actually referenced by the target file.
+
+    When debug=True, returns (context_str, debug_info) with diagnostic details.
     """
     lc = _resolve_lang_config(lang_config)
     related = find_related_files(filepath, all_files, root, source, lang_config=lc)
     if not related:
+        if debug:
+            return "", {"related_files": [], "referenced_symbols": set(), "signatures": [], "budget": {"used_chars": 0, "max_chars": max_tokens * 4}}
         return ""
 
     referenced = lc.extract_referenced_symbols(source)
@@ -82,6 +87,7 @@ def build_cross_file_context(
     context_parts = []
     total_len = 0
     char_budget = max_tokens * 4
+    sig_details = []
 
     for rel_file in related:
         try:
@@ -97,12 +103,27 @@ def build_cross_file_context(
             continue
 
         if total_len + len(sig) > char_budget:
+            if debug:
+                sig_details.append({"file": str(rel_file.name), "sig_length": len(sig), "included": False})
             break
 
         context_parts.append(sig)
         total_len += len(sig)
+        if debug:
+            sig_details.append({"file": str(rel_file.name), "sig_length": len(sig), "included": True})
 
     if not context_parts:
+        if debug:
+            return "", {"related_files": [str(f.name) for f in related], "referenced_symbols": referenced, "signatures": sig_details, "budget": {"used_chars": 0, "max_chars": char_budget}}
         return ""
 
-    return "\n\n".join(context_parts) + "\n\n"
+    result = "\n\n".join(context_parts) + "\n\n"
+    if debug:
+        debug_info = {
+            "related_files": [str(f.name) for f in related],
+            "referenced_symbols": referenced,
+            "signatures": sig_details,
+            "budget": {"used_chars": total_len, "max_chars": char_budget},
+        }
+        return result, debug_info
+    return result
