@@ -2,3 +2,6 @@
 .repro/
 tests/deps/
 __pycache__
+/python/.dataset
+node_modules
+/viewer/dist

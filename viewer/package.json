@@ -1,0 +1,22 @@
+{
+  "name": "fim-dataset-viewer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n server,vite -c blue,green \"node server/index.js\" \"vite\"",
+    "build": "vite build",
+    "start": "node server/index.js",
+    "server": "node server/index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "highlight.js": "^11.10.0",
+    "vue": "^3.5.0",
+    "vue-router": "^4.4.0",
+    "@vitejs/plugin-vue": "^5.1.0",
+    "vite": "^5.4.0",
+    "concurrently": "^9.0.0"
+  }
+}
