@@ -41,10 +41,6 @@ def _extract_signature(
     for line in lines:
         stripped = line.strip()
 
-        if 'require' in stripped and ("'" in stripped or '"' in stripped):
-            sig_lines.append(line)
-            continue
-
         m = re.match(r'^(?:local\s+)?function\s+([\w.:]+)\s*\(', stripped)
         if m:
             fn_name = m.group(1).rsplit('.', 1)[-1].rsplit(':', 1)[-1]

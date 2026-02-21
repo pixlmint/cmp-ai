@@ -41,10 +41,6 @@ def _extract_signature(
     for line in lines:
         stripped = line.strip()
 
-        if stripped.startswith(('require ', "require_relative ")):
-            sig_lines.append(line)
-            continue
-
         if re.match(r'^(?:module|class)\s+\w+', stripped):
             sig_lines.append(line)
             continue

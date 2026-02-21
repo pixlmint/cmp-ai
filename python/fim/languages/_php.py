@@ -51,18 +51,25 @@ def _extract_signature(
     lines = source.split('\n')
     sig_lines = []
 
+    # Track public/protected unreferenced method indices for overflow pruning
+    public_unreferenced_indices: list[int] = []
+
     for line in lines:
         stripped = line.strip()
 
-        if stripped.startswith(('namespace ', 'use ', 'class ', 'interface ', 'trait ', 'abstract class', 'final class', 'enum ')):
+        if stripped.startswith(('class ', 'interface ', 'trait ', 'abstract class', 'final class', 'enum ')):
             sig_lines.append(line)
             continue
 
         m = re.match(r'\s*(?:(?:public|protected|private|static|abstract|final)\s+)*' r'function\s+(\w+)\s*\(', line)
         if m:
             method_name = m.group(1)
-            if referenced_symbols is not None and method_name not in referenced_symbols:
+            is_private = re.search(r'\bprivate\b', line) is not None
+            is_referenced = referenced_symbols is None or method_name in referenced_symbols
+
+            if is_private and not is_referenced:
                 continue
+
             sig = line.rstrip()
             if '{' in sig:
                 sig = sig[: sig.index('{')] + '{ ... }'
@@ -70,6 +77,8 @@ def _extract_signature(
                 pass
             else:
                 sig += ' { ... }'
+            if not is_private and not is_referenced:
+                public_unreferenced_indices.append(len(sig_lines))
             sig_lines.append(sig)
             continue
 
@@ -86,7 +95,13 @@ def _extract_signature(
         return ''
 
     if len(sig_lines) > max_lines:
-        sig_lines = sig_lines[:max_lines]
+        # Drop public/protected unreferenced methods first
+        for idx in reversed(public_unreferenced_indices):
+            if len(sig_lines) <= max_lines:
+                break
+            sig_lines.pop(idx)
+        if len(sig_lines) > max_lines:
+            sig_lines = sig_lines[:max_lines]
 
     header = f'// --- {filepath.name} ---\n'
     return header + '\n'.join(sig_lines)

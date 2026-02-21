@@ -30,10 +30,11 @@ def _extract_require_files(source: str) -> set[str]:
 
 
 _extract_signature = make_brace_signature_extractor(
-    decl_keywords=['import ', 'class ', 'struct ', 'enum ', 'protocol ', 'extension ', 'public class', 'public struct', 'public enum', 'public protocol', 'open class', '@'],
+    decl_keywords=['class ', 'struct ', 'enum ', 'protocol ', 'extension ', 'public class', 'public struct', 'public enum', 'public protocol', 'open class', '@'],
     func_pattern=r'\s*(?:(?:public|private|internal|fileprivate|open|static|class|override|mutating|@\w+)\s+)*func\s+(\w+)\s*[(<]',
     comment_header='//',
     member_pattern=r'(?:(?:public|private|internal|static|class|let|var)\s+)+\w+\s*[:=]',
+    private_pattern=r'\b(?:private|fileprivate)\b',
 )
 
 _extract_referenced_symbols = extract_c_family_referenced_symbols

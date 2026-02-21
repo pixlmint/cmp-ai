@@ -44,10 +44,6 @@ def _extract_signature(
     for line in lines:
         stripped = line.strip()
 
-        if stripped.startswith(('use ', 'package ')):
-            sig_lines.append(line)
-            continue
-
         m = re.match(r'^sub\s+(\w+)', stripped)
         if m:
             fn_name = m.group(1)

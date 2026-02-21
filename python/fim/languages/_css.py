@@ -50,10 +50,6 @@ def _css_extract_signature(
     for line in lines:
         stripped = line.strip()
 
-        if stripped.startswith('@import') or stripped.startswith('@charset'):
-            sig_lines.append(line)
-            continue
-
         if re.match(r'^@(?:media|keyframes|font-face|supports)\b', stripped):
             sig_lines.append(line)
             continue
@@ -134,10 +130,6 @@ def _scss_extract_signature(
 
     for line in lines:
         stripped = line.strip()
-
-        if stripped.startswith(('@import', '@use', '@forward', '@charset')):
-            sig_lines.append(line)
-            continue
 
         if re.match(r'^\$[\w-]+\s*:', stripped):
             sig_lines.append(line)

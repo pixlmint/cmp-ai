@@ -11,12 +11,13 @@ from fim.crossfile import (
 
 
 class TestExtractFileSignature:
-    def test_includes_namespace_and_class(self, dependency_provider_php):
+    def test_includes_class_but_not_imports(self, dependency_provider_php):
         sig = extract_file_signature(dependency_provider_php, Path("UserService.php"))
-        assert "namespace App\\Services" in sig
         assert "class UserService" in sig
+        # Import lines should not appear in signatures
+        assert "use App\\" not in sig
 
-    def test_includes_method_signatures(self, dependency_provider_php):
+    def test_includes_all_public_method_signatures(self, dependency_provider_php):
         sig = extract_file_signature(dependency_provider_php, Path("UserService.php"))
         assert "findUser" in sig
         assert "deleteUser" in sig
@@ -26,15 +27,45 @@ class TestExtractFileSignature:
         sig = extract_file_signature(dependency_provider_php, Path("UserService.php"))
         assert "{ ... }" in sig
 
-    def test_referenced_symbols_filter_limits_methods(self, dependency_provider_php):
+    def test_referenced_symbols_filter_keeps_public_methods(self, dependency_provider_php):
+        """Public methods are always included regardless of referenced_symbols."""
         sig = extract_file_signature(
             dependency_provider_php,
             Path("UserService.php"),
             referenced_symbols={"findUser"},
         )
         assert "findUser" in sig
-        assert "deleteUser" not in sig
-        assert "listUsers" not in sig
+        # Public methods are always included even if not referenced
+        assert "deleteUser" in sig
+        assert "listUsers" in sig
+
+    def test_referenced_symbols_filter_excludes_private_methods(self):
+        """Private methods are excluded when not in referenced_symbols."""
+        source = """\
+<?php
+class Foo
+{
+    public function bar(): void {}
+    private function secret(): void {}
+    protected function helper(): void {}
+}
+"""
+        sig = extract_file_signature(source, Path("Foo.php"), referenced_symbols={"bar"})
+        assert "bar" in sig
+        assert "secret" not in sig
+        assert "helper" in sig  # protected = always included
+
+    def test_private_methods_included_when_referenced(self):
+        """Private methods are included when they appear in referenced_symbols."""
+        source = """\
+<?php
+class Foo
+{
+    private function secret(): void {}
+}
+"""
+        sig = extract_file_signature(source, Path("Foo.php"), referenced_symbols={"secret"})
+        assert "secret" in sig
 
     def test_header_contains_filename(self, dependency_provider_php):
         sig = extract_file_signature(dependency_provider_php, Path("UserService.php"))

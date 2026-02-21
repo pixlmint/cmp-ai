@@ -50,10 +50,6 @@ def _extract_signature(
     for line in lines:
         stripped = line.strip()
 
-        if stripped.startswith('#include') or stripped.startswith('#define') or stripped.startswith('#ifndef') or stripped.startswith('#endif'):
-            sig_lines.append(line)
-            continue
-
         if re.match(r'^(?:typedef\s+)?(?:struct|union|enum|class|namespace)\s+\w+', stripped):
             sig_lines.append(line)
             continue

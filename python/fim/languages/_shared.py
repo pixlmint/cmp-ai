@@ -13,6 +13,7 @@ def make_brace_signature_extractor(
     func_pattern: str,
     comment_header: str,
     member_pattern: str | None = None,
+    private_pattern: str | None = None,
 ):
     """
     Factory for C-family languages that share ``{ ... }`` body stripping.
@@ -21,6 +22,9 @@ def make_brace_signature_extractor(
     *func_pattern* – regex whose group(1) is the function/method name.
     *comment_header* – prefix for the file header line (``//``, ``#``, ``--``).
     *member_pattern* – optional regex for property/const lines to keep.
+    *private_pattern* – optional regex to detect private methods; matched methods
+      are only included when they appear in *referenced_symbols*, while
+      non-matching (public/protected) methods are always included.
     """
 
     def _extract(
@@ -31,6 +35,9 @@ def make_brace_signature_extractor(
     ) -> str:
         lines = source.split('\n')
         sig_lines: list[str] = []
+        # Track which method sig_lines are public/protected and not in referenced_symbols,
+        # so we can drop them first if we exceed max_lines.
+        public_unreferenced_indices: list[int] = []
 
         for line in lines:
             stripped = line.strip()
@@ -42,8 +49,12 @@ def make_brace_signature_extractor(
             m = re.match(func_pattern, line)
             if m:
                 fn_name = m.group(1)
-                if referenced_symbols is not None and fn_name not in referenced_symbols:
+                is_private = private_pattern is not None and re.search(private_pattern, line)
+                is_referenced = referenced_symbols is None or fn_name in referenced_symbols
+
+                if is_private and not is_referenced:
                     continue
+
                 sig = line.rstrip()
                 if '{' in sig:
                     sig = sig[: sig.index('{')] + '{ ... }'
@@ -51,6 +62,8 @@ def make_brace_signature_extractor(
                     pass
                 else:
                     sig += ' { ... }'
+                if not is_private and not is_referenced:
+                    public_unreferenced_indices.append(len(sig_lines))
                 sig_lines.append(sig)
                 continue
 
@@ -65,7 +78,13 @@ def make_brace_signature_extractor(
         if not sig_lines:
             return ''
         if len(sig_lines) > max_lines:
-            sig_lines = sig_lines[:max_lines]
+            # Drop public/protected unreferenced methods first
+            for idx in reversed(public_unreferenced_indices):
+                if len(sig_lines) <= max_lines:
+                    break
+                sig_lines.pop(idx)
+            if len(sig_lines) > max_lines:
+                sig_lines = sig_lines[:max_lines]
         header = f'{comment_header} --- {filepath.name} ---\n'
         return header + '\n'.join(sig_lines)
 

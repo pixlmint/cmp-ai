@@ -41,10 +41,6 @@ def _extract_signature(
     for line in lines:
         stripped = line.strip()
 
-        if stripped.startswith(('source ', '. ')):
-            sig_lines.append(line)
-            continue
-
         m = re.match(r'^(?:function\s+)?(\w+)\s*\(\s*\)', stripped)
         if m:
             fn_name = m.group(1)
