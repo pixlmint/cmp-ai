@@ -88,6 +88,7 @@ def _make_example_from_byte_span(
     xf_context: str,
     max_total_chars: int,
     lines: list[str],
+    min_words: int = MIN_MIDDLE_WORDS,
 ) -> FIMExample | None:
     """Create a FIMExample from a span with byte offsets."""
     sb, eb = span.start_byte, span.end_byte
@@ -95,7 +96,7 @@ def _make_example_from_byte_span(
     middle = source[sb:eb]
     suffix = source[eb:]
 
-    if not middle.strip() or len(middle.split()) < MIN_MIDDLE_WORDS:
+    if not middle.strip() or len(middle.split()) < min_words:
         return None
 
     total = len(prefix) + len(middle) + len(suffix) + len(xf_context)
@@ -248,8 +249,10 @@ def generate_fim_examples(
         ex = None
         if span.start_byte >= 0 and span.end_byte > span.start_byte:
             # Byte-offset spans (AST, dev-behavior)
+            min_w = 1 if span.kind.startswith("dev_") else MIN_MIDDLE_WORDS
             ex = _make_example_from_byte_span(
                 source, span, rel_path, xf_context, max_total_chars, lines,
+                min_words=min_w,
             )
         elif span.kind == "char_random":
             # Char-level random spans (offsets stored in start_line/end_line)

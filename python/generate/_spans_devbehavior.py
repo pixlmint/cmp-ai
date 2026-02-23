@@ -21,7 +21,7 @@ def generate_incomplete_line_spans(
     lc = _resolve_lang_config(lang_config)
     lines = source.split("\n")
     spans = []
-    target_count = max(1, len(lines) // 30)
+    target_count = max(1, len(lines) // 15)
 
     # Sub-strategy 1: Random intra-line (half)
     for _ in range(target_count // 2 + 1):
@@ -129,7 +129,7 @@ def generate_bracket_context_spans(
     if not bracket_nodes:
         return spans
 
-    target_count = max(1, len(source.split("\n")) // 60)
+    target_count = max(1, len(source.split("\n")) // 40)
     chosen = random.sample(bracket_nodes, min(target_count, len(bracket_nodes)))
     source_bytes = source.encode("utf-8")
 
@@ -190,7 +190,7 @@ def generate_post_comment_spans(
 
     _collect_comment_spans(tree)
 
-    target_count = max(1, len(source.split("\n")) // 100)
+    target_count = max(1, len(source.split("\n")) // 60)
     if len(spans) > target_count:
         spans = random.sample(spans, target_count)
 
