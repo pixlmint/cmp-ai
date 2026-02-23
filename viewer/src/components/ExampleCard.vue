@@ -1,5 +1,5 @@
 <template>
-  <div class="example-card">
+  <div class="example-card" :class="{ 'is-pending': pending }">
     <div class="card-header">
       <span class="filepath">{{ example.filepath }}</span>
       <span class="badge kind">{{ example.span_kind }}</span>
@@ -7,6 +7,12 @@
       <span class="meta">{{ example.middle_lines }} lines</span>
       <span class="meta">score: {{ example.complexity_score?.toFixed(2) }}</span>
       <span class="meta index">#{{ example._index }}</span>
+      <span v-if="pending" class="badge pending-badge" :class="pending">
+        {{ pending === 'accepted' ? 'pending accept' : 'pending reject' }}
+      </span>
+      <button v-if="pending" class="btn btn-undo" @click="$emit('undo', { sourceFile, index: example._index })">undo</button>
+      <button v-if="!pending && showReject" class="btn btn-reject" @click="$emit('move', { sourceFile, index: example._index, destFile: 'reject.jsonl' })">reject</button>
+      <button v-if="!pending && showAccept" class="btn btn-accept" @click="$emit('move', { sourceFile, index: example._index, destFile: 'train.jsonl' })">accept</button>
     </div>
 
     <div v-if="crossFileContext" class="section">
@@ -43,7 +49,14 @@ import CodeBlock from './CodeBlock.vue'
 const props = defineProps({
   example: { type: Object, required: true },
   language: { type: String, default: '' },
+  sourceFile: { type: String, default: '' },
+  pending: { type: String, default: null }, // 'accepted' | 'rejected' | null
 })
+
+defineEmits(['move', 'undo'])
+
+const showReject = computed(() => props.sourceFile && props.sourceFile !== 'reject.jsonl')
+const showAccept = computed(() => props.sourceFile === 'reject.jsonl')
 
 const showContext = ref(false)
 const showPrefix = ref(false)
@@ -119,6 +132,10 @@ const suffixLineCount = computed(() => ((props.example.suffix || '').match(/\n/g
   border-radius: 8px;
   margin-bottom: 16px;
   overflow: hidden;
+  transition: opacity 0.2s;
+}
+.example-card.is-pending {
+  opacity: 0.5;
 }
 .card-header {
   display: flex;
@@ -142,6 +159,25 @@ const suffixLineCount = computed(() => ((props.example.suffix || '').match(/\n/g
 .name { background: rgba(108, 182, 255, 0.15); color: #6cb6ff; }
 .meta { font-size: 12px; color: var(--text-muted); }
 .index { margin-left: auto; }
+.pending-badge.accepted { background: rgba(63, 185, 80, 0.2); color: #3fb950; }
+.pending-badge.rejected { background: rgba(248, 81, 73, 0.2); color: #f85149; }
+.btn {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-muted);
+  transition: all 0.15s;
+}
+.btn:hover { color: var(--text); }
+.btn-reject { border-color: #f85149; color: #f85149; }
+.btn-reject:hover { background: rgba(248, 81, 73, 0.15); }
+.btn-accept { border-color: #3fb950; color: #3fb950; }
+.btn-accept:hover { background: rgba(63, 185, 80, 0.15); }
+.btn-undo { border-color: var(--text-muted); }
+.btn-undo:hover { background: rgba(255, 255, 255, 0.05); }
 .section-toggle {
   padding: 6px 16px;
   font-size: 13px;

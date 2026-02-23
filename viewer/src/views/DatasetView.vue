@@ -15,7 +15,14 @@
       <div v-if="loading" class="loading">Loading...</div>
 
       <template v-if="!loading && examples.length">
-        <ExampleList :examples="examples" :language="metadata?.language || 'python'" />
+        <ExampleList
+          :examples="examples"
+          :language="metadata?.language || 'python'"
+          :activeFile="activeFile"
+          :pendingMoves="pendingMoves"
+          @move="onMove"
+          @undo="onUndo"
+        />
         <Pagination
           :page="page"
           :totalPages="totalPages"
@@ -27,12 +34,16 @@
       <div v-if="!loading && !examples.length && hasLoaded" class="empty">
         No examples found.
       </div>
+
+      <button v-if="pendingCount > 0" class="save-fab" @click="onSave">
+        Save {{ pendingCount }} change{{ pendingCount === 1 ? '' : 's' }}
+      </button>
     </main>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api.js'
 import FilterPanel from '../components/FilterPanel.vue'
@@ -54,6 +65,8 @@ const total = ref(0)
 const loading = ref(false)
 const hasLoaded = ref(false)
 const searchQuery = ref('')
+const pendingMoves = ref({}) // keyed by "sourceFile:index"
+const pendingCount = computed(() => Object.keys(pendingMoves.value).length)
 
 onMounted(async () => {
   try {
@@ -63,10 +76,14 @@ onMounted(async () => {
       return
     }
     metadata.value = await api.metadata()
-    // Derive file list from metadata
-    files.value = []
-    if (metadata.value.train_examples) files.value.push({ name: 'train.jsonl', examples: metadata.value.train_examples })
-    if (metadata.value.val_examples) files.value.push({ name: 'val.jsonl', examples: metadata.value.val_examples })
+    // Try to get file list from status (includes reject.jsonl), fall back to metadata
+    if (status.files) {
+      files.value = status.files
+    } else {
+      files.value = []
+      if (metadata.value.train_examples) files.value.push({ name: 'train.jsonl', examples: metadata.value.train_examples })
+      if (metadata.value.val_examples) files.value.push({ name: 'val.jsonl', examples: metadata.value.val_examples })
+    }
     await loadFacets()
     await loadExamples()
   } catch {
@@ -128,6 +145,30 @@ function doSearch() {
   page.value = 1
   loadExamples()
 }
+
+async function onMove({ sourceFile, index, destFile }) {
+  const key = `${sourceFile}:${index}`
+  pendingMoves.value = { ...pendingMoves.value, [key]: { sourceFile, index, destFile } }
+  await api.move(sourceFile, index, destFile)
+}
+
+async function onUndo({ sourceFile, index }) {
+  const key = `${sourceFile}:${index}`
+  const copy = { ...pendingMoves.value }
+  delete copy[key]
+  pendingMoves.value = copy
+  await api.undoMove(sourceFile, index)
+}
+
+async function onSave() {
+  const result = await api.save()
+  pendingMoves.value = {}
+  if (result.files) {
+    files.value = result.files
+  }
+  await loadFacets()
+  await loadExamples()
+}
 </script>
 
 <style scoped>
@@ -145,6 +186,7 @@ function doSearch() {
 .main-content {
   padding: 20px 24px;
   overflow-y: auto;
+  position: relative;
 }
 .loading {
   color: var(--text-muted);
@@ -155,5 +197,24 @@ function doSearch() {
   color: var(--text-muted);
   padding: 40px;
   text-align: center;
+}
+.save-fab {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 12px 24px;
+  background: #3fb950;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  transition: background 0.15s;
+}
+.save-fab:hover {
+  background: #2ea043;
 }
 </style>

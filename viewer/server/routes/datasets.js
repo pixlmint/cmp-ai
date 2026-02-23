@@ -24,6 +24,10 @@ router.get('/status', (req, res) => {
     progress: store.indexProgress,
     open: store.datasetPath != null,
     path: store.datasetPath,
+    files: Object.entries(store.files).map(([name, f]) => ({
+      name,
+      examples: f.metadata.length,
+    })),
   })
 })
 
@@ -120,6 +124,51 @@ router.get('/search', async (req, res) => {
     query: q,
     examples: examples.map((ex, i) => ex ? { ...ex, _index: pageIndices[i] } : null).filter(Boolean),
   })
+})
+
+// Record a pending move (accept/reject)
+router.post('/move', (req, res) => {
+  const { sourceFile, index, destFile } = req.body
+  if (!sourceFile || index == null || !destFile) {
+    return res.status(400).json({ error: 'sourceFile, index, and destFile are required' })
+  }
+  // Prevent duplicate moves for same source+index
+  const existing = store.pendingMoves.findIndex(m => m.sourceFile === sourceFile && m.index === index)
+  if (existing >= 0) store.pendingMoves.splice(existing, 1)
+  store.pendingMoves.push({ sourceFile, index, destFile })
+  res.json({ pendingCount: store.pendingMoves.length })
+})
+
+// Undo a pending move
+router.delete('/move', (req, res) => {
+  const { sourceFile, index } = req.body
+  if (!sourceFile || index == null) {
+    return res.status(400).json({ error: 'sourceFile and index are required' })
+  }
+  const idx = store.pendingMoves.findIndex(m => m.sourceFile === sourceFile && m.index === index)
+  if (idx >= 0) store.pendingMoves.splice(idx, 1)
+  res.json({ pendingCount: store.pendingMoves.length })
+})
+
+// Get all pending moves
+router.get('/pending', (req, res) => {
+  res.json({ moves: store.pendingMoves, count: store.pendingMoves.length })
+})
+
+// Apply all pending moves and rewrite JSONL files
+router.post('/save', async (req, res) => {
+  try {
+    const counts = await store.applyMoves()
+    res.json({
+      counts,
+      files: Object.entries(store.files).map(([name, f]) => ({
+        name,
+        examples: f.metadata.length,
+      })),
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
 })
 
 export default router
