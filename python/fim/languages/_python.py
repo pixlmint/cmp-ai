@@ -111,6 +111,7 @@ PYTHON = LanguageConfig(
     },
     ast_ident_node_types={'identifier'},
     ast_name_node_type='identifier',
+    ast_function_types=frozenset({'function_definition'}),
     regex_func_pattern=r'^(\s*)(?:async\s+)?def\s+(\w+)\s*\(',
     regex_array_pattern=r'^(\s*)\S.*[\[\{]\s*$',
     regex_block_keywords='',

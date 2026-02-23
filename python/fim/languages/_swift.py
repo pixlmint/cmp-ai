@@ -62,6 +62,7 @@ SWIFT = LanguageConfig(
     },
     ast_ident_node_types={'simple_identifier'},
     ast_name_node_type='simple_identifier',
+    ast_function_types=frozenset({'function_declaration'}),
     regex_func_pattern=r'^(\s*)(?:(?:public|private|internal|fileprivate|open|static|class|override|mutating)\s+)*func\s+(\w+)',
     regex_array_pattern=r'^(\s*)\S.*[\[\{]\s*$',
     regex_block_keywords='if|else\\s*if|else|for|while|switch|guard',

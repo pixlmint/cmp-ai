@@ -107,6 +107,7 @@ RUST = LanguageConfig(
     },
     ast_ident_node_types={'identifier', 'field_identifier', 'type_identifier'},
     ast_name_node_type='identifier',
+    ast_function_types=frozenset({'function_item'}),
     regex_func_pattern=r'^(\s*)(?:pub(?:\([\w:]+\))?\s+)?(?:async\s+)?fn\s+(\w+)',
     regex_array_pattern=r'^(\s*)\S.*[\[\{]\s*$',
     regex_block_keywords='if|else\\s*if|else|for|while|match|loop',

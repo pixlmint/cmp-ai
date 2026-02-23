@@ -158,6 +158,7 @@ PHP = LanguageConfig(
     },
     ast_ident_node_types={'name', 'variable_name', 'member_access_expression'},
     ast_name_node_type='name',
+    ast_function_types=frozenset({'function_definition', 'method_declaration', 'anonymous_function', 'arrow_function'}),
     regex_func_pattern=r'^(\s*)(?:(?:public|protected|private|static|abstract|final)\s+)*function\s+(\w+)\s*\(',
     regex_array_pattern=r'^(\s*)\S.*(?:\[|array\()\s*$',
     regex_block_keywords='if|else\\s*if|elseif|else|foreach|for|while|switch|try|catch',

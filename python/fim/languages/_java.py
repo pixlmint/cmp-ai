@@ -62,6 +62,7 @@ JAVA = LanguageConfig(
     },
     ast_ident_node_types={'identifier'},
     ast_name_node_type='identifier',
+    ast_function_types=frozenset({'method_declaration', 'constructor_declaration'}),
     regex_func_pattern=r'^(\s*)(?:(?:public|protected|private|static|abstract|final|synchronized)\s+)*(?:\w+(?:<[\w<>,?\s]+>)?)\s+(\w+)\s*\(',
     regex_array_pattern=r'^(\s*)\S.*[\[\{]\s*$',
     regex_block_keywords='if|else\\s*if|else|for|while|switch|try|catch',

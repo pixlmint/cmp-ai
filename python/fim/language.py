@@ -35,6 +35,7 @@ class LanguageConfig:
     ast_bracket_types: set[str] = field(default_factory=set)
     ast_ident_node_types: set[str] = field(default_factory=set)
     ast_name_node_type: str = "name"  # "name" for PHP, "identifier" for Python
+    ast_function_types: frozenset[str] = field(default_factory=frozenset)
 
     # Regex fallback spans
     regex_func_pattern: str = ""

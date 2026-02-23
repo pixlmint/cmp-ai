@@ -94,6 +94,7 @@ LUA = LanguageConfig(
     },
     ast_ident_node_types={'identifier'},
     ast_name_node_type='identifier',
+    ast_function_types=frozenset({'function_declaration', 'function_definition', 'local_function'}),
     regex_func_pattern=r'^(\s*)(?:local\s+)?function\s+([\w.:]+)\s*\(',
     regex_array_pattern=r'^(\s*)\S.*\{\s*$',
     regex_block_keywords='',

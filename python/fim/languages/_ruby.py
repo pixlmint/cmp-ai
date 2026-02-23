@@ -100,6 +100,7 @@ RUBY = LanguageConfig(
     },
     ast_ident_node_types={'identifier', 'constant'},
     ast_name_node_type='identifier',
+    ast_function_types=frozenset({'method', 'singleton_method'}),
     regex_func_pattern=r'^(\s*)def\s+(?:self\.)?(\w+[?!=]?)',
     regex_array_pattern=r'^(\s*)\S.*[\[\{]\s*$',
     regex_block_keywords='',

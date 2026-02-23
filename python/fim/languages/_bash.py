@@ -93,6 +93,7 @@ BASH = LanguageConfig(
     },
     ast_ident_node_types={'word', 'variable_name'},
     ast_name_node_type='word',
+    ast_function_types=frozenset({'function_definition'}),
     regex_func_pattern=r'^(\s*)(?:function\s+)?(\w+)\s*\(\s*\)',
     regex_array_pattern='',
     regex_block_keywords='',

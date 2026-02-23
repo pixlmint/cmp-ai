@@ -228,7 +228,7 @@ def generate_fim_examples(
 
     if use_ast and lc.ts_language is not None:
         # AST spans (~66% — from extract_spans_ast which has its own count scaling)
-        ast_spans = extract_spans_ast(source, lang_config=lc)
+        ast_spans = extract_spans_ast(source, lang_config=lc, max_middle_lines=max_middle_lines)
         all_spans.extend(ast_spans)
 
         # Developer behavior spans (~22%)

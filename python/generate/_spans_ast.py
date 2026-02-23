@@ -29,25 +29,65 @@ def _find_deepest_containing(node: "Node", start: int, end: int) -> "Node":
     return node
 
 
+def _count_functions_in_node(node, function_types: frozenset[str]) -> int:
+    """Recursively count function-type nodes within a subtree."""
+    count = 1 if node.type in function_types else 0
+    for child in node.children:
+        count += _count_functions_in_node(child, function_types)
+    return count
+
+
+def _build_function_prefix_sums(children: list, function_types: frozenset[str]) -> list[int]:
+    """Precompute prefix sums of function counts for O(1) range queries.
+
+    Returns list of length len(children)+1 where prefix[i] = total function
+    count in children[0:i]. Range query [i, j] = prefix[j+1] - prefix[i].
+    """
+    prefix = [0] * (len(children) + 1)
+    for k, child in enumerate(children):
+        prefix[k + 1] = prefix[k] + _count_functions_in_node(child, function_types)
+    return prefix
+
+
+def _trim_trailing_comments(children: list, i: int, j: int) -> int:
+    """Walk backwards from j, skip children whose type is 'comment', return adjusted end index."""
+    while j > i and children[j].type == 'comment':
+        j -= 1
+    return j
+
+
 def _aligned_span_from_random(
-    source_bytes: bytes, tree: "Node", start: int, end: int
+    source_bytes: bytes, tree: "Node", start: int, end: int,
+    function_types: frozenset[str] = frozenset(),
 ) -> tuple[int, int] | None:
     """
     Aligned-Span Masking: snap a random char span to AST boundaries.
     Find the LCA node, then select the contiguous subsequence of its
     children that maximizes IoU with the original span.
+
+    Skips candidate ranges spanning more than 1 function-type child
+    when function_types is non-empty. Trims trailing comment children.
     """
     lca = _find_deepest_containing(tree, start, end)
     children = [c for c in lca.children if c.end_byte > c.start_byte]
     if not children:
         return lca.start_byte, lca.end_byte
 
+    # Precompute function counts for O(1) range queries
+    func_prefix: list[int] | None = None
+    if function_types:
+        func_prefix = _build_function_prefix_sums(children, function_types)
+
     # Find contiguous child subsequence maximizing IoU with [start, end)
     best_iou = 0.0
     best_range = (lca.start_byte, lca.end_byte)
+    best_ij: tuple[int, int] | None = None
 
     for i in range(len(children)):
         for j in range(i, len(children)):
+            # Skip multi-function spans (O(1) lookup via prefix sums)
+            if func_prefix is not None and func_prefix[j + 1] - func_prefix[i] > 1:
+                break  # extending j further only adds more functions
             s = children[i].start_byte
             e = children[j].end_byte
             intersection = max(0, min(e, end) - max(s, start))
@@ -58,11 +98,21 @@ def _aligned_span_from_random(
             if iou > best_iou:
                 best_iou = iou
                 best_range = (s, e)
+                best_ij = (i, j)
 
-    return best_range
+    # No valid candidate found — reject if function constraint was active
+    if best_ij is None:
+        if function_types:
+            return None
+        return best_range
+
+    # Trim trailing comment children from the selected range
+    i, j = best_ij
+    j = _trim_trailing_comments(children, i, j)
+    return (children[i].start_byte, children[j].end_byte)
 
 
-def extract_spans_ast(source: str, lang_config=None) -> list[CodeSpan]:
+def extract_spans_ast(source: str, lang_config=None, max_middle_lines: int = 0) -> list[CodeSpan]:
     """
     Extract code spans using tree-sitter AST (AST-FIM paper).
     50/50 split between single-node masking and aligned-span masking.
@@ -126,11 +176,14 @@ def extract_spans_ast(source: str, lang_config=None) -> list[CodeSpan]:
         start = random.randint(1, max_start)
         end = start + span_len
 
-        result = _aligned_span_from_random(source_bytes, root, start, end)
+        result = _aligned_span_from_random(source_bytes, root, start, end, function_types=lc.ast_function_types)
         if result is None:
             continue
         s, e = result
         if e - s < 5 or e - s > len(source_bytes) // 2:
+            continue
+        # Reject spans exceeding line limit early
+        if max_middle_lines > 0 and source_bytes[s:e].count(b"\n") + 1 > max_middle_lines:
             continue
 
         start_line = source_bytes[:s].count(b"\n")
