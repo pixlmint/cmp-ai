@@ -26,7 +26,7 @@ def _categorize(kind: str) -> str:
     return "char"
 
 
-def _rebalance_examples(examples: list[FIMExample]) -> list[FIMExample]:
+def rebalance_examples(examples: list[FIMExample]) -> list[FIMExample]:
     """Downsample overrepresented categories to match target ratios.
 
     Only downsamples — if a category is underrepresented, keep all of it
@@ -277,4 +277,4 @@ def generate_fim_examples(
 
             examples.append(ex)
 
-    return _rebalance_examples(examples)
+    return examples

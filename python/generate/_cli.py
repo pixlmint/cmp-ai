@@ -13,7 +13,7 @@ from fim.types import FIMConfig, FIM_CONFIGS, FIMExample
 from fim.discovery import find_files
 from fim.language import get_language, registered_languages
 from fim.bm25 import build_bm25_index
-from ._fim import generate_fim_examples
+from ._fim import generate_fim_examples, rebalance_examples
 from ._quality import print_dataset_stats, compute_complexity_score, filter_low_quality_examples
 
 
@@ -167,11 +167,14 @@ def generate_all_examples(args, source_files, context_pool, bm25_index, use_ast,
 
 
 def apply_postprocessing(args, all_examples):
-    """Apply quality filtering and curriculum sorting. Returns (examples, rejected, rejected_by_kind)."""
+    """Apply quality filtering, rebalancing, and curriculum sorting. Returns (examples, rejected, rejected_by_kind)."""
     rejected = 0
     rejected_by_kind: dict[str, int] = {}
     if args.quality_filter:
         all_examples, rejected, rejected_by_kind = filter_low_quality_examples(all_examples)
+
+    # Rebalance globally after quality filtering (not per-file)
+    all_examples = rebalance_examples(all_examples)
 
     if args.curriculum:
         all_examples.sort(key=lambda ex: ex.complexity_score, reverse=True)
