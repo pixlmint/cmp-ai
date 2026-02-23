@@ -36,20 +36,20 @@ class TestFilterLowQualityExamples:
         )
         kept, rejected, _rejected_by_kind = filter_low_quality_examples([ex])
         assert len(kept) == 1
-        assert rejected == 0
+        assert len(rejected) == 0
 
     def test_rejects_repetitive_middle(self):
         # >50% duplicate lines
         repeated = "\n".join(["$x = 1;"] * 10 + ["$y = 2;"] * 2)
         ex = make_example(middle=repeated)
         kept, rejected, _rejected_by_kind = filter_low_quality_examples([ex])
-        assert rejected == 1
+        assert len(rejected) == 1
         assert len(kept) == 0
 
     def test_rejects_low_entropy(self):
         ex = make_example(middle="aaa aaa aaa")
         kept, rejected, _rejected_by_kind = filter_low_quality_examples([ex])
-        assert rejected == 1
+        assert len(rejected) == 1
 
     def test_rejects_comment_only(self):
         comments = "\n".join([
@@ -61,21 +61,21 @@ class TestFilterLowQualityExamples:
         ])
         ex = make_example(middle=comments)
         kept, rejected, _rejected_by_kind = filter_low_quality_examples([ex])
-        assert rejected == 1
+        assert len(rejected) == 1
 
     def test_rejects_tiny_ratio(self):
         # middle < 3% of total
         big = "x" * 1000
         ex = make_example(prefix=big, middle="ab cd ef", suffix=big)
         kept, rejected, _rejected_by_kind = filter_low_quality_examples([ex])
-        assert rejected == 1
+        assert len(rejected) == 1
 
     def test_rejects_huge_ratio(self):
         # middle > 80% of total
         big_middle = "$x = 1;\n" * 100
         ex = make_example(prefix="<?php\n", middle=big_middle, suffix="")
         kept, rejected, _rejected_by_kind = filter_low_quality_examples([ex])
-        assert rejected == 1
+        assert len(rejected) == 1
 
     def test_skip_quality_filters_bypasses_check(self):
         """skip_quality_filters on FIMExample should bypass named checks."""
@@ -89,11 +89,11 @@ class TestFilterLowQualityExamples:
         ex = make_example(middle=comments)
         # Without exclusion: rejected
         kept, rejected, _ = filter_low_quality_examples([ex])
-        assert rejected == 1
+        assert len(rejected) == 1
         # With comment_only exclusion: kept
         ex.skip_quality_filters = frozenset({"comment_only"})
         kept, rejected, _ = filter_low_quality_examples([ex])
-        assert rejected == 0
+        assert len(rejected) == 0
         assert len(kept) == 1
 
     def test_mixed_batch_counts(self):
@@ -105,7 +105,7 @@ class TestFilterLowQualityExamples:
         bad_entropy = make_example(middle="aaa aaa aaa")
         kept, rejected, _rejected_by_kind = filter_low_quality_examples([good, bad_entropy])
         assert len(kept) == 1
-        assert rejected == 1
+        assert len(rejected) == 1
 
 
 class TestComputeComplexityScore:

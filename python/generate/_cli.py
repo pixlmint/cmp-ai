@@ -167,11 +167,11 @@ def generate_all_examples(args, source_files, context_pool, bm25_index, use_ast,
 
 
 def apply_postprocessing(args, all_examples):
-    """Apply quality filtering, rebalancing, and curriculum sorting. Returns (examples, rejected, rejected_by_kind)."""
-    rejected = 0
+    """Apply quality filtering, rebalancing, and curriculum sorting. Returns (examples, rejected_examples, rejected_by_kind)."""
+    rejected_examples: list[FIMExample] = []
     rejected_by_kind: dict[str, int] = {}
     if args.quality_filter:
-        all_examples, rejected, rejected_by_kind = filter_low_quality_examples(all_examples)
+        all_examples, rejected_examples, rejected_by_kind = filter_low_quality_examples(all_examples)
 
     # Rebalance globally after quality filtering (not per-file)
     all_examples = rebalance_examples(all_examples)
@@ -182,7 +182,7 @@ def apply_postprocessing(args, all_examples):
             keep = max(1, len(all_examples) * args.curriculum_top_pct // 100)
             all_examples = all_examples[:keep]
 
-    return all_examples, rejected, rejected_by_kind
+    return all_examples, rejected_examples, rejected_by_kind
 
 
 def preview_examples(examples, count, fim_config):
@@ -206,8 +206,8 @@ def preview_examples(examples, count, fim_config):
         print(f"Total formatted length: {len(formatted)} chars")
 
 
-def write_output(args, all_examples, fim_config, use_ast, rejected, source_files, lang_config, rejected_by_kind=None):
-    """Split into train/val and write JSONL + metadata files."""
+def write_output(args, all_examples, fim_config, use_ast, rejected_examples, source_files, lang_config, rejected_by_kind=None):
+    """Split into train/val and write JSONL + metadata files. Also writes reject.jsonl if there are rejected examples."""
     # Shuffle and split (unless curriculum mode, which keeps the sort order)
     if not args.curriculum:
         random.shuffle(all_examples)
@@ -215,14 +215,17 @@ def write_output(args, all_examples, fim_config, use_ast, rejected, source_files
     val_examples = all_examples[:val_size]
     train_examples = all_examples[val_size:]
 
-    print(f"\n  Train: {len(train_examples)} examples")
-    print(f"  Val:   {len(val_examples)} examples")
+    print(f"\n  Train:    {len(train_examples)} examples")
+    print(f"  Val:      {len(val_examples)} examples")
+    if rejected_examples:
+        print(f"  Rejected: {len(rejected_examples)} examples")
 
     # Write output
     args.output.mkdir(parents=True, exist_ok=True)
 
     train_path = args.output / "train.jsonl"
     val_path = args.output / "val.jsonl"
+    reject_path = args.output / "reject.jsonl"
 
     for path, examples in [(train_path, train_examples), (val_path, val_examples)]:
         with open(path, "w") as f:
@@ -230,6 +233,13 @@ def write_output(args, all_examples, fim_config, use_ast, rejected, source_files
                 json.dump(ex.to_training_format(fim_config), f)
                 f.write("\n")
         print(f"  Wrote {path} ({len(examples)} examples)")
+
+    if rejected_examples:
+        with open(reject_path, "w") as f:
+            for ex in rejected_examples:
+                json.dump(ex.to_training_format(fim_config), f)
+                f.write("\n")
+        print(f"  Wrote {reject_path} ({len(rejected_examples)} examples)")
 
     # Write metadata
     meta_path = args.output / "metadata.json"
@@ -244,7 +254,7 @@ def write_output(args, all_examples, fim_config, use_ast, rejected, source_files
         "bm25_context": args.bm25_context,
         "ast_fim": use_ast and lang_config.ts_language is not None,
         "quality_filter": args.quality_filter,
-        "quality_filter_rejected": rejected,
+        "quality_filter_rejected": len(rejected_examples),
         "quality_filter_rejected_by_kind": rejected_by_kind or {},
         "curriculum": args.curriculum,
         "curriculum_top_pct": args.curriculum_top_pct,
@@ -299,12 +309,12 @@ def main():
     all_examples, file_complexity = generate_all_examples(
         args, source_files, context_pool, bm25_index, use_ast, lang_config,
     )
-    all_examples, rejected, rejected_by_kind = apply_postprocessing(args, all_examples)
+    all_examples, rejected_examples, rejected_by_kind = apply_postprocessing(args, all_examples)
 
-    print_dataset_stats(all_examples, rejected=rejected, rejected_by_kind=rejected_by_kind)
+    print_dataset_stats(all_examples, rejected=len(rejected_examples), rejected_by_kind=rejected_by_kind)
 
     if args.preview > 0:
         preview_examples(all_examples, args.preview, fim_config)
         return
 
-    write_output(args, all_examples, fim_config, use_ast, rejected, source_files, lang_config, rejected_by_kind)
+    write_output(args, all_examples, fim_config, use_ast, rejected_examples, source_files, lang_config, rejected_by_kind)
