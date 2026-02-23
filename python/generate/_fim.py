@@ -1,3 +1,4 @@
+import random
 from pathlib import Path
 
 from fim.deps import Parser
@@ -12,6 +13,65 @@ from ._spans_devbehavior import (
 )
 from fim.crossfile import build_cross_file_context
 from fim.bm25 import retrieve_bm25_context
+
+# Target span category ratios (AST-FIM + SynthCoder papers)
+TARGET_RATIOS = {"ast": 0.66, "dev": 0.22, "char": 0.12}
+
+
+def _categorize(kind: str) -> str:
+    if kind.startswith("ast_"):
+        return "ast"
+    if kind.startswith("dev_"):
+        return "dev"
+    return "char"
+
+
+def _rebalance_examples(examples: list[FIMExample]) -> list[FIMExample]:
+    """Downsample overrepresented categories to match target ratios.
+
+    Only downsamples — if a category is underrepresented, keep all of it
+    and redistribute its shortfall proportionally to the others.
+    """
+    if not examples:
+        return examples
+
+    # Group by category
+    buckets: dict[str, list[FIMExample]] = {"ast": [], "dev": [], "char": []}
+    for ex in examples:
+        buckets[_categorize(ex.span_kind)].append(ex)
+
+    total = len(examples)
+
+    # Compute raw targets
+    raw_targets = {cat: int(total * ratio) for cat, ratio in TARGET_RATIOS.items()}
+
+    # Find categories that are under target (keep all of them)
+    # and redistribute their shortfall to over-target categories
+    under = {cat: raw_targets[cat] - len(buckets[cat]) for cat in buckets if len(buckets[cat]) < raw_targets[cat]}
+    shortfall = sum(max(0, v) for v in under.values())
+
+    # Categories eligible for downsampling
+    over_cats = [cat for cat in buckets if len(buckets[cat]) >= raw_targets[cat]]
+    over_ratio_sum = sum(TARGET_RATIOS[cat] for cat in over_cats)
+
+    # Distribute shortfall proportionally among over-target categories
+    targets: dict[str, int] = {}
+    for cat in buckets:
+        if cat in under:
+            targets[cat] = len(buckets[cat])  # keep all
+        else:
+            extra = int(shortfall * TARGET_RATIOS[cat] / over_ratio_sum) if over_ratio_sum > 0 else 0
+            targets[cat] = raw_targets[cat] + extra
+
+    # Downsample
+    result = []
+    for cat, items in buckets.items():
+        if len(items) <= targets[cat]:
+            result.extend(items)
+        else:
+            result.extend(random.sample(items, targets[cat]))
+
+    return result
 
 
 def _resolve_lang_config(lang_config):
@@ -217,4 +277,4 @@ def generate_fim_examples(
 
             examples.append(ex)
 
-    return examples
+    return _rebalance_examples(examples)

@@ -9,8 +9,8 @@ class TestCharLevelSplits:
         assert all(s.kind == "char_random" for s in spans)
 
     def test_count_scales_with_lines(self, seed_rng):
-        # ~100 lines → ~5 splits (100 // 20)
-        source = "<?php\n" + "\n".join(f"$x{i} = {i};" for i in range(100))
+        # ~400 lines → ~5 splits (400 // 80)
+        source = "<?php\n" + "\n".join(f"$x{i} = {i};" for i in range(400))
         spans = generate_char_level_splits(source)
         assert len(spans) >= 3
 

@@ -23,9 +23,9 @@ def generate_char_level_splits(
     if len(source) < min_middle_chars * 3:
         return []
 
-    # Default: ~1 split per 20 lines
+    # Default: ~1 split per 80 lines (targets ~10% of total spans)
     if num_splits <= 0:
-        num_splits = max(1, source.count("\n") // 20)
+        num_splits = max(1, source.count("\n") // 80)
 
     spans = []
     for _ in range(num_splits):

@@ -167,10 +167,11 @@ def generate_all_examples(args, source_files, context_pool, bm25_index, use_ast,
 
 
 def apply_postprocessing(args, all_examples):
-    """Apply quality filtering and curriculum sorting. Returns (examples, rejected)."""
+    """Apply quality filtering and curriculum sorting. Returns (examples, rejected, rejected_by_kind)."""
     rejected = 0
+    rejected_by_kind: dict[str, int] = {}
     if args.quality_filter:
-        all_examples, rejected = filter_low_quality_examples(all_examples)
+        all_examples, rejected, rejected_by_kind = filter_low_quality_examples(all_examples)
 
     if args.curriculum:
         all_examples.sort(key=lambda ex: ex.complexity_score, reverse=True)
@@ -178,7 +179,7 @@ def apply_postprocessing(args, all_examples):
             keep = max(1, len(all_examples) * args.curriculum_top_pct // 100)
             all_examples = all_examples[:keep]
 
-    return all_examples, rejected
+    return all_examples, rejected, rejected_by_kind
 
 
 def preview_examples(examples, count, fim_config):
@@ -202,7 +203,7 @@ def preview_examples(examples, count, fim_config):
         print(f"Total formatted length: {len(formatted)} chars")
 
 
-def write_output(args, all_examples, fim_config, use_ast, rejected, source_files, lang_config):
+def write_output(args, all_examples, fim_config, use_ast, rejected, source_files, lang_config, rejected_by_kind=None):
     """Split into train/val and write JSONL + metadata files."""
     # Shuffle and split (unless curriculum mode, which keeps the sort order)
     if not args.curriculum:
@@ -241,6 +242,7 @@ def write_output(args, all_examples, fim_config, use_ast, rejected, source_files
         "ast_fim": use_ast and lang_config.ts_language is not None,
         "quality_filter": args.quality_filter,
         "quality_filter_rejected": rejected,
+        "quality_filter_rejected_by_kind": rejected_by_kind or {},
         "curriculum": args.curriculum,
         "curriculum_top_pct": args.curriculum_top_pct,
         "tested_only": args.tested_only,
@@ -294,12 +296,12 @@ def main():
     all_examples, file_complexity = generate_all_examples(
         args, source_files, context_pool, bm25_index, use_ast, lang_config,
     )
-    all_examples, rejected = apply_postprocessing(args, all_examples)
+    all_examples, rejected, rejected_by_kind = apply_postprocessing(args, all_examples)
 
-    print_dataset_stats(all_examples, rejected=rejected)
+    print_dataset_stats(all_examples, rejected=rejected, rejected_by_kind=rejected_by_kind)
 
     if args.preview > 0:
         preview_examples(all_examples, args.preview, fim_config)
         return
 
-    write_output(args, all_examples, fim_config, use_ast, rejected, source_files, lang_config)
+    write_output(args, all_examples, fim_config, use_ast, rejected, source_files, lang_config, rejected_by_kind)

@@ -34,7 +34,7 @@ class TestFilterLowQualityExamples:
             middle="    public function bar() { return 1; }\n    public function baz() { return 2; }\n",
             suffix="}\n",
         )
-        kept, rejected = filter_low_quality_examples([ex])
+        kept, rejected, _rejected_by_kind = filter_low_quality_examples([ex])
         assert len(kept) == 1
         assert rejected == 0
 
@@ -42,13 +42,13 @@ class TestFilterLowQualityExamples:
         # >50% duplicate lines
         repeated = "\n".join(["$x = 1;"] * 10 + ["$y = 2;"] * 2)
         ex = make_example(middle=repeated)
-        kept, rejected = filter_low_quality_examples([ex])
+        kept, rejected, _rejected_by_kind = filter_low_quality_examples([ex])
         assert rejected == 1
         assert len(kept) == 0
 
     def test_rejects_low_entropy(self):
         ex = make_example(middle="aaa aaa aaa")
-        kept, rejected = filter_low_quality_examples([ex])
+        kept, rejected, _rejected_by_kind = filter_low_quality_examples([ex])
         assert rejected == 1
 
     def test_rejects_comment_only(self):
@@ -60,21 +60,21 @@ class TestFilterLowQualityExamples:
             "// final one",
         ])
         ex = make_example(middle=comments)
-        kept, rejected = filter_low_quality_examples([ex])
+        kept, rejected, _rejected_by_kind = filter_low_quality_examples([ex])
         assert rejected == 1
 
     def test_rejects_tiny_ratio(self):
         # middle < 3% of total
         big = "x" * 1000
         ex = make_example(prefix=big, middle="ab cd ef", suffix=big)
-        kept, rejected = filter_low_quality_examples([ex])
+        kept, rejected, _rejected_by_kind = filter_low_quality_examples([ex])
         assert rejected == 1
 
     def test_rejects_huge_ratio(self):
         # middle > 80% of total
         big_middle = "$x = 1;\n" * 100
         ex = make_example(prefix="<?php\n", middle=big_middle, suffix="")
-        kept, rejected = filter_low_quality_examples([ex])
+        kept, rejected, _rejected_by_kind = filter_low_quality_examples([ex])
         assert rejected == 1
 
     def test_mixed_batch_counts(self):
@@ -84,7 +84,7 @@ class TestFilterLowQualityExamples:
             suffix="\n    public function z(): void { echo 'done'; }\n}\n",
         )
         bad_entropy = make_example(middle="aaa aaa aaa")
-        kept, rejected = filter_low_quality_examples([good, bad_entropy])
+        kept, rejected, _rejected_by_kind = filter_low_quality_examples([good, bad_entropy])
         assert len(kept) == 1
         assert rejected == 1
 

@@ -13,7 +13,7 @@ def _resolve_lang_config(lang_config):
     return lang_config
 
 
-def print_dataset_stats(examples: list[FIMExample], rejected: int = 0):
+def print_dataset_stats(examples: list[FIMExample], rejected: int = 0, rejected_by_kind: dict[str, int] | None = None):
     """Print summary statistics about the generated dataset."""
     if not examples:
         print("  No examples generated!")
@@ -36,6 +36,9 @@ def print_dataset_stats(examples: list[FIMExample], rejected: int = 0):
     print(f"  Total examples:        {total}")
     if rejected:
         print(f"  Quality-filtered out:  {rejected}")
+        if rejected_by_kind:
+            for kind, count in sorted(rejected_by_kind.items(), key=lambda x: -x[1]):
+                print(f"    {kind:<25} {count:>6}")
     print(f"  Unique files:          {len(set(ex.filepath for ex in examples))}")
     print(f"  With cross-file ctx:   {has_xf}")
     print(f"  Span categories:")
@@ -104,9 +107,9 @@ def _char_entropy(text: str) -> float:
     return -sum((n / total) * math.log2(n / total) for n in freq.values())
 
 
-def filter_low_quality_examples(examples: list[FIMExample]) -> tuple[list[FIMExample], int]:
+def filter_low_quality_examples(examples: list[FIMExample]) -> tuple[list[FIMExample], int, dict[str, int]]:
     """
-    Apply heuristic quality filters. Returns (kept, rejected_count).
+    Apply heuristic quality filters. Returns (kept, rejected_count, rejected_by_kind).
 
     Filters:
     - Repetition: middle has >50% duplicate lines
@@ -116,6 +119,7 @@ def filter_low_quality_examples(examples: list[FIMExample]) -> tuple[list[FIMExa
     """
     kept = []
     rejected = 0
+    rejected_by_kind: dict[str, int] = {}
 
     for ex in examples:
         middle = ex.middle
@@ -127,11 +131,13 @@ def filter_low_quality_examples(examples: list[FIMExample]) -> tuple[list[FIMExa
             total_non_empty = sum(1 for l in mid_lines if l.strip())
             if total_non_empty > 0 and len(unique) / total_non_empty < 0.5:
                 rejected += 1
+                rejected_by_kind[ex.span_kind] = rejected_by_kind.get(ex.span_kind, 0) + 1
                 continue
 
         # Entropy check
         if _char_entropy(middle) < 2.0:
             rejected += 1
+            rejected_by_kind[ex.span_kind] = rejected_by_kind.get(ex.span_kind, 0) + 1
             continue
 
         # Comment-only check
@@ -142,6 +148,7 @@ def filter_low_quality_examples(examples: list[FIMExample]) -> tuple[list[FIMExa
             )
             if comment_lines / max(1, len(mid_lines)) > 0.8:
                 rejected += 1
+                rejected_by_kind[ex.span_kind] = rejected_by_kind.get(ex.span_kind, 0) + 1
                 continue
 
         # Length ratio check
@@ -150,8 +157,9 @@ def filter_low_quality_examples(examples: list[FIMExample]) -> tuple[list[FIMExa
             ratio = len(middle) / total_len
             if ratio < 0.03 or ratio > 0.80:
                 rejected += 1
+                rejected_by_kind[ex.span_kind] = rejected_by_kind.get(ex.span_kind, 0) + 1
                 continue
 
         kept.append(ex)
 
-    return kept, rejected
+    return kept, rejected, rejected_by_kind
