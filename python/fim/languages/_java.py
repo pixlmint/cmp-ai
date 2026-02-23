@@ -71,6 +71,7 @@ JAVA = LanguageConfig(
         'return ', '= ', 'new ', '(', '[', '{',
         'throw ', 'this.',
     ],
+    doc_comment_openers=['/**'],
     extract_imports=_extract_imports,
     extract_require_files=_extract_require_files,
     extract_signature=_extract_signature,

@@ -44,6 +44,7 @@ class LanguageConfig:
 
     # Dev-behavior spans
     trigger_tokens: list[str] = field(default_factory=list)
+    doc_comment_openers: list[str] = field(default_factory=list)
 
     # Cross-file context (callables — logic differs too much per language)
     extract_imports: Callable[[str], set[str]] = field(default=lambda source: set())

@@ -1,4 +1,4 @@
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, field, asdict
 
 
 @dataclass
@@ -58,6 +58,7 @@ class CodeSpan:
     indent: int = 0    # indentation level
     start_byte: int = -1  # byte offset (when set, used instead of line numbers)
     end_byte: int = -1    # byte offset (when set, used instead of line numbers)
+    skip_quality_filters: frozenset[str] = field(default_factory=frozenset)
 
 
 @dataclass
@@ -75,6 +76,10 @@ class FIMExample:
     complexity_score: float = 0.0
     middle_lines: int = 0
     total_lines: int = 0
+
+    # Quality filter exclusions — set of check names to skip
+    # Valid names: "repetition", "entropy", "comment_only", "length_ratio"
+    skip_quality_filters: frozenset[str] = field(default_factory=frozenset)
 
     def to_training_format(self, fim_config: FIMConfig) -> dict:
         """Convert to the JSONL format expected by training frameworks."""

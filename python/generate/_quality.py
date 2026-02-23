@@ -123,42 +123,48 @@ def filter_low_quality_examples(examples: list[FIMExample]) -> tuple[list[FIMExa
 
     for ex in examples:
         middle = ex.middle
+        skip = ex.skip_quality_filters
 
         # Repetition check
-        mid_lines = middle.split("\n")
-        if len(mid_lines) > 2:
-            unique = set(l.strip() for l in mid_lines if l.strip())
-            total_non_empty = sum(1 for l in mid_lines if l.strip())
-            if total_non_empty > 0 and len(unique) / total_non_empty < 0.5:
-                rejected += 1
-                rejected_by_kind[ex.span_kind] = rejected_by_kind.get(ex.span_kind, 0) + 1
-                continue
+        if "repetition" not in skip:
+            mid_lines = middle.split("\n")
+            if len(mid_lines) > 2:
+                unique = set(l.strip() for l in mid_lines if l.strip())
+                total_non_empty = sum(1 for l in mid_lines if l.strip())
+                if total_non_empty > 0 and len(unique) / total_non_empty < 0.5:
+                    rejected += 1
+                    rejected_by_kind[ex.span_kind] = rejected_by_kind.get(ex.span_kind, 0) + 1
+                    continue
 
         # Entropy check
-        if _char_entropy(middle) < 2.0:
-            rejected += 1
-            rejected_by_kind[ex.span_kind] = rejected_by_kind.get(ex.span_kind, 0) + 1
-            continue
+        if "entropy" not in skip:
+            if _char_entropy(middle) < 2.0:
+                rejected += 1
+                rejected_by_kind[ex.span_kind] = rejected_by_kind.get(ex.span_kind, 0) + 1
+                continue
 
         # Comment-only check
-        if mid_lines:
-            comment_lines = sum(
-                1 for l in mid_lines
-                if l.strip().startswith(("//", "/*", "*", "#"))
-            )
-            if comment_lines / max(1, len(mid_lines)) > 0.8:
-                rejected += 1
-                rejected_by_kind[ex.span_kind] = rejected_by_kind.get(ex.span_kind, 0) + 1
-                continue
+        mid_lines = middle.split("\n")
+        if "comment_only" not in skip:
+            if mid_lines:
+                comment_lines = sum(
+                    1 for l in mid_lines
+                    if l.strip().startswith(("//", "/*", "*", "#"))
+                )
+                if comment_lines / max(1, len(mid_lines)) > 0.8:
+                    rejected += 1
+                    rejected_by_kind[ex.span_kind] = rejected_by_kind.get(ex.span_kind, 0) + 1
+                    continue
 
         # Length ratio check
-        total_len = len(ex.prefix) + len(middle) + len(ex.suffix)
-        if total_len > 0:
-            ratio = len(middle) / total_len
-            if ratio < 0.03 or ratio > 0.80:
-                rejected += 1
-                rejected_by_kind[ex.span_kind] = rejected_by_kind.get(ex.span_kind, 0) + 1
-                continue
+        if "length_ratio" not in skip:
+            total_len = len(ex.prefix) + len(middle) + len(ex.suffix)
+            if total_len > 0:
+                ratio = len(middle) / total_len
+                if ratio < 0.03 or ratio > 0.80:
+                    rejected += 1
+                    rejected_by_kind[ex.span_kind] = rejected_by_kind.get(ex.span_kind, 0) + 1
+                    continue
 
         kept.append(ex)
 

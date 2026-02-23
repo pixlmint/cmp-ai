@@ -179,6 +179,50 @@ class UserService
 """
 
 
+@pytest.fixture
+def class_with_doc_comments_php():
+    return """\
+<?php
+
+namespace App\\Services;
+
+use App\\Models\\User;
+
+class UserService
+{
+    /**
+     * Find a user by their ID.
+     *
+     * @param int $id The user ID
+     * @return User|null
+     * @throws NotFoundException
+     */
+    public function findById(int $id): ?User
+    {
+        return $this->repo->find($id);
+    }
+
+    /**
+     * Deactivate a user account.
+     *
+     * @param User $user The user to deactivate
+     * @return void
+     */
+    public function deactivate(User $user): void
+    {
+        $user->setActive(false);
+        $this->repo->save($user);
+    }
+
+    // This is just a regular comment
+    public function count(): int
+    {
+        return $this->repo->count();
+    }
+}
+"""
+
+
 def make_example(
     prefix="<?php\n\nfunction foo() {\n",
     middle="    return 42;\n",

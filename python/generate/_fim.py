@@ -10,6 +10,7 @@ from ._spans_devbehavior import (
     generate_incomplete_line_spans,
     generate_bracket_context_spans,
     generate_post_comment_spans,
+    generate_doc_comment_spans,
 )
 from fim.crossfile import build_cross_file_context
 from fim.bm25 import retrieve_bm25_context
@@ -121,6 +122,7 @@ def _make_example_from_byte_span(
         cross_file_context=xf_context,
         middle_lines=mid_lines,
         total_lines=len(lines),
+        skip_quality_filters=span.skip_quality_filters,
     )
 
 
@@ -236,6 +238,7 @@ def generate_fim_examples(
         all_spans.extend(generate_incomplete_line_spans(source, tree_root, lang_config=lc))
         all_spans.extend(generate_bracket_context_spans(source, tree_root, lang_config=lc))
         all_spans.extend(generate_post_comment_spans(source, tree_root, lang_config=lc))
+        all_spans.extend(generate_doc_comment_spans(source, tree_root, lang_config=lc))
     else:
         # Regex fallback
         all_spans.extend(extract_spans_regex(source, lang_config=lc))

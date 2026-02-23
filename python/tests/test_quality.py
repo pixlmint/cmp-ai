@@ -77,6 +77,25 @@ class TestFilterLowQualityExamples:
         kept, rejected, _rejected_by_kind = filter_low_quality_examples([ex])
         assert rejected == 1
 
+    def test_skip_quality_filters_bypasses_check(self):
+        """skip_quality_filters on FIMExample should bypass named checks."""
+        comments = "\n".join([
+            "// this is a comment",
+            "// another comment",
+            "// yet another",
+            "// and more",
+            "// final one",
+        ])
+        ex = make_example(middle=comments)
+        # Without exclusion: rejected
+        kept, rejected, _ = filter_low_quality_examples([ex])
+        assert rejected == 1
+        # With comment_only exclusion: kept
+        ex.skip_quality_filters = frozenset({"comment_only"})
+        kept, rejected, _ = filter_low_quality_examples([ex])
+        assert rejected == 0
+        assert len(kept) == 1
+
     def test_mixed_batch_counts(self):
         good = make_example(
             prefix="<?php\nnamespace App;\n\nclass A {\n    private int $x;\n    private int $y;\n\n",
