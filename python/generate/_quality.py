@@ -5,6 +5,27 @@ from collections import Counter
 from fim.deps import HAS_TREE_SITTER, Parser
 from fim.types import FIMExample
 
+# Matches lines that are import/require/include/use statements.
+# Covers all 17 supported languages.
+_IMPORT_LINE_RE = re.compile(
+    r"^\s*(?:"
+    r"require_once|require_relative|include_once|include"
+    r"|from\s+\S+\s+import\b"
+    r"|import\b"
+    r"|using\b"
+    r"|use\b"
+    r"|extern\s+crate\b"
+    r"|load\b"
+    r"|#\s*include\b"
+    r"|source\b"
+    r"|@(?:import|use|forward)\b"
+    # JS/TS: const/let/var x = require(...)
+    r"|(?:const|let|var)\s+\S+\s*=\s*require\s*\("
+    # Bare require(...) call as a statement
+    r"|require\s*\("
+    r")"
+)
+
 
 def _resolve_lang_config(lang_config):
     if lang_config is None:
@@ -112,6 +133,7 @@ def filter_low_quality_examples(examples: list[FIMExample]) -> tuple[list[FIMExa
     Apply heuristic quality filters. Returns (kept, rejected_examples, rejected_by_kind).
 
     Filters:
+    - Import-only: middle completes an import/require/include statement
     - Repetition: middle has >50% duplicate lines
     - Entropy: char entropy of middle < 2.0 bits
     - Comment-only: middle is >80% comments
@@ -124,6 +146,26 @@ def filter_low_quality_examples(examples: list[FIMExample]) -> tuple[list[FIMExa
     for ex in examples:
         middle = ex.middle
         skip = ex.skip_quality_filters
+
+        # Import-only check: reconstruct lines from prefix tail + middle + suffix head
+        if "import" not in skip:
+            prefix_tail = ex.prefix.rsplit("\n", 1)[-1] if ex.prefix else ""
+            suffix_head = ex.suffix.split("\n", 1)[0] if ex.suffix else ""
+            mid_lines = middle.split("\n")
+            # Reconstruct the full lines the middle participates in
+            full_lines = []
+            for i, ml in enumerate(mid_lines):
+                line = ml
+                if i == 0:
+                    line = prefix_tail + line
+                if i == len(mid_lines) - 1:
+                    line = line + suffix_head
+                full_lines.append(line)
+            non_empty = [l for l in full_lines if l.strip()]
+            if non_empty and all(_IMPORT_LINE_RE.match(l) for l in non_empty):
+                rejected_examples.append(ex)
+                rejected_by_kind[ex.span_kind] = rejected_by_kind.get(ex.span_kind, 0) + 1
+                continue
 
         # Repetition check
         if "repetition" not in skip:

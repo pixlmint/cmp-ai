@@ -96,6 +96,55 @@ class TestFilterLowQualityExamples:
         assert len(rejected) == 0
         assert len(kept) == 1
 
+    def test_rejects_require_once_middle(self):
+        """Middle that completes a require_once statement should be rejected."""
+        ex = make_example(
+            prefix="<?php\nrequire",
+            middle="_once 'vendor/autoload.php';",
+            suffix="\n\nclass Foo {}\n",
+        )
+        kept, rejected, _ = filter_low_quality_examples([ex])
+        assert len(rejected) == 1
+        assert len(kept) == 0
+
+    def test_rejects_full_import_line_middle(self):
+        """Middle that is a complete import line should be rejected."""
+        ex = make_example(
+            prefix="<?php\n",
+            middle="use App\\Models\\User;\n",
+            suffix="\nclass Foo {}\n",
+        )
+        kept, rejected, _ = filter_low_quality_examples([ex])
+        assert len(rejected) == 1
+
+    def test_rejects_python_import_middle(self):
+        ex = make_example(
+            prefix="",
+            middle="from collections import Counter\nimport os\n",
+            suffix="\ndef main(): pass\n",
+        )
+        kept, rejected, _ = filter_low_quality_examples([ex])
+        assert len(rejected) == 1
+
+    def test_rejects_js_require_middle(self):
+        ex = make_example(
+            prefix="const express = ",
+            middle="require('express');",
+            suffix="\nconst app = express();\n",
+        )
+        kept, rejected, _ = filter_low_quality_examples([ex])
+        assert len(rejected) == 1
+
+    def test_keeps_import_mixed_with_code(self):
+        """If middle has import lines AND code lines, keep it."""
+        ex = make_example(
+            prefix="<?php\nnamespace App\\Services;\n\n",
+            middle="use App\\Models\\User;\n\nclass Foo {\n    public function bar() {}\n",
+            suffix="}\n// end of file\n",
+        )
+        kept, rejected, _ = filter_low_quality_examples([ex])
+        assert len(kept) == 1
+
     def test_mixed_batch_counts(self):
         good = make_example(
             prefix="<?php\nnamespace App;\n\nclass A {\n    private int $x;\n    private int $y;\n\n",
