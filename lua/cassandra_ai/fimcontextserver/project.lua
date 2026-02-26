@@ -43,7 +43,6 @@ function M.get_config(project_root)
   local fcs_conf = effective.fimcontextserver or {}
   local merged = vim.tbl_deep_extend('force', vim.deepcopy(defaults), fcs_conf)
 
-  logger.trace('project.get_config() -> ' .. project_root .. ' -> ' .. vim.inspect(merged))
   return merged
 end
 
