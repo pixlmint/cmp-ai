@@ -128,11 +128,12 @@ def _char_entropy(text: str) -> float:
     return -sum((n / total) * math.log2(n / total) for n in freq.values())
 
 
-def filter_low_quality_examples(examples: list[FIMExample]) -> tuple[list[FIMExample], list[FIMExample], dict[str, int]]:
+def filter_low_quality_examples(examples: list[FIMExample], min_middle_chars: int = 40) -> tuple[list[FIMExample], list[FIMExample], dict[str, int]]:
     """
     Apply heuristic quality filters. Returns (kept, rejected_examples, rejected_by_kind).
 
     Filters:
+    - Min middle length: middle stripped text < min_middle_chars
     - Import-only: middle completes an import/require/include statement
     - Repetition: middle has >50% duplicate lines
     - Entropy: char entropy of middle < 2.0 bits
@@ -146,6 +147,13 @@ def filter_low_quality_examples(examples: list[FIMExample]) -> tuple[list[FIMExa
     for ex in examples:
         middle = ex.middle
         skip = ex.skip_quality_filters
+
+        # Min middle length check
+        if "min_length" not in skip:
+            if len(middle.strip()) < min_middle_chars:
+                rejected_examples.append(ex)
+                rejected_by_kind[ex.span_kind] = rejected_by_kind.get(ex.span_kind, 0) + 1
+                continue
 
         # Import-only check: reconstruct lines from prefix tail + middle + suffix head
         if "import" not in skip:

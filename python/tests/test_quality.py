@@ -96,6 +96,39 @@ class TestFilterLowQualityExamples:
         assert len(rejected) == 0
         assert len(kept) == 1
 
+    def test_rejects_short_middle(self):
+        """Middle below min_middle_chars threshold should be rejected."""
+        ex = make_example(
+            prefix="<?php\nclass Foo {\n",
+            middle="return $x;",
+            suffix="\n}\n",
+        )
+        # 10 chars, well below default 40
+        kept, rejected, _ = filter_low_quality_examples([ex])
+        assert len(rejected) == 1
+        assert len(kept) == 0
+
+    def test_keeps_middle_above_threshold(self):
+        ex = make_example(
+            prefix="<?php\nclass Foo {\n",
+            middle="    public function bar() { return 1; }\n    public function baz() { return 2; }\n",
+            suffix="}\n",
+        )
+        kept, rejected, _ = filter_low_quality_examples([ex])
+        assert len(kept) == 1
+
+    def test_min_middle_chars_configurable(self):
+        ex = make_example(
+            prefix="<?php\nclass Foo {\n",
+            middle="return $this->x;",
+            suffix="\n}\n",
+        )
+        # 16 chars — rejected at default 40, kept at 10
+        kept, rejected, _ = filter_low_quality_examples([ex], min_middle_chars=40)
+        assert len(rejected) == 1
+        kept, rejected, _ = filter_low_quality_examples([ex], min_middle_chars=10)
+        assert len(kept) == 1
+
     def test_rejects_require_once_middle(self):
         """Middle that completes a require_once statement should be rejected."""
         ex = make_example(

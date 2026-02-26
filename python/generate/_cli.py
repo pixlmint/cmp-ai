@@ -85,6 +85,8 @@ def build_argument_parser() -> argparse.ArgumentParser:
     # Phase 5: Quality filter
     parser.add_argument("--quality-filter", action="store_true",
                         help="Apply heuristic quality filtering")
+    parser.add_argument("--min-middle-chars", type=int, default=40,
+                        help="Minimum middle section length in chars (default: 40)")
     return parser
 
 
@@ -171,7 +173,9 @@ def apply_postprocessing(args, all_examples):
     rejected_examples: list[FIMExample] = []
     rejected_by_kind: dict[str, int] = {}
     if args.quality_filter:
-        all_examples, rejected_examples, rejected_by_kind = filter_low_quality_examples(all_examples)
+        all_examples, rejected_examples, rejected_by_kind = filter_low_quality_examples(
+            all_examples, min_middle_chars=args.min_middle_chars,
+        )
 
     # Rebalance globally after quality filtering (not per-file)
     all_examples = rebalance_examples(all_examples)
@@ -254,6 +258,7 @@ def write_output(args, all_examples, fim_config, use_ast, rejected_examples, sou
         "bm25_context": args.bm25_context,
         "ast_fim": use_ast and lang_config.ts_language is not None,
         "quality_filter": args.quality_filter,
+        "min_middle_chars": args.min_middle_chars,
         "quality_filter_rejected": len(rejected_examples),
         "quality_filter_rejected_by_kind": rejected_by_kind or {},
         "curriculum": args.curriculum,
