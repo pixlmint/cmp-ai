@@ -235,9 +235,9 @@ def generate_fim_examples(
         all_spans.extend(ast_spans)
 
         # Developer behavior spans (~22%)
-        all_spans.extend(generate_incomplete_line_spans(source, tree_root, lang_config=lc))
+        all_spans.extend(generate_incomplete_line_spans(source, tree_root, lang_config=lc, max_middle_lines=max_middle_lines))
         all_spans.extend(generate_bracket_context_spans(source, tree_root, lang_config=lc))
-        all_spans.extend(generate_post_comment_spans(source, tree_root, lang_config=lc))
+        all_spans.extend(generate_post_comment_spans(source, tree_root, lang_config=lc, max_middle_lines=max_middle_lines))
         all_spans.extend(generate_doc_comment_spans(source, tree_root, lang_config=lc))
     else:
         # Regex fallback

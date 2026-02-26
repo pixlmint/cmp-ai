@@ -12,8 +12,58 @@ def _resolve_lang_config(lang_config):
     return lang_config
 
 
+def _truncate_node_to_statements(
+    node: "Node",
+    source_bytes: bytes,
+    max_middle_lines: int,
+) -> int:
+    """Return a truncated end_byte for *node* capped by line budget.
+
+    For function-like nodes (method_declaration, function_definition, etc.)
+    this drills into the body child (compound_statement / block) and includes
+    statement children until *max_middle_lines* is reached.  For other compound
+    nodes it walks the immediate children directly.
+
+    If the node has no meaningful children or is already small enough, the
+    original ``node.end_byte`` is returned unchanged.
+    """
+    # Punctuation / delimiter types that aren't "statements"
+    skip_types = frozenset({
+        "{", "}", "(", ")", "[", "]", ":", ";",
+        "NEWLINE", "INDENT", "DEDENT", "comment",
+    })
+
+    # For function-like nodes, drill into the body (compound_statement / block)
+    # so we count actual statements rather than signature parts.
+    body_types = frozenset({
+        "compound_statement", "block", "statement_block",
+    })
+    target = node
+    for child in node.children:
+        if child.type in body_types:
+            target = child
+            break
+
+    node_start_line = source_bytes[:node.start_byte].count(b"\n")
+    last_end = node.start_byte
+
+    for child in target.children:
+        if child.type in skip_types or not child.type:
+            # Still include the opening brace / signature in the span
+            last_end = max(last_end, child.end_byte)
+            continue
+        child_end_line = source_bytes[:child.end_byte].count(b"\n")
+        span_lines = child_end_line - node_start_line + 1
+        if span_lines > max_middle_lines:
+            break
+        last_end = child.end_byte
+
+    return last_end if last_end > node.start_byte else node.end_byte
+
+
 def generate_incomplete_line_spans(
-    source: str, tree: "Node | None" = None, lang_config=None
+    source: str, tree: "Node | None" = None, lang_config=None,
+    max_middle_lines: int = 30,
 ) -> list[CodeSpan]:
     """
     Generate spans simulating a developer typing mid-line (~15% of spans).
@@ -84,7 +134,13 @@ def generate_incomplete_line_spans(
             cut_byte_abs = line_start + cut_in_line
             node = _find_deepest_containing(tree, cut_byte_abs, cut_byte_abs + 1)
             if node and node.end_byte > cut_byte_abs:
-                end_byte = node.end_byte
+                node_lines = source_bytes[cut_byte_abs:node.end_byte].count(b"\n") + 1
+                if node_lines > max_middle_lines:
+                    end_byte = _truncate_node_to_statements(
+                        node, source_bytes, max_middle_lines,
+                    )
+                else:
+                    end_byte = node.end_byte
 
         cut_byte = line_start + cut_in_line
         if end_byte - cut_byte < 3:
@@ -157,11 +213,16 @@ def generate_bracket_context_spans(
 
 
 def generate_post_comment_spans(
-    source: str, tree: "Node | None" = None, lang_config=None
+    source: str, tree: "Node | None" = None, lang_config=None,
+    max_middle_lines: int = 30,
 ) -> list[CodeSpan]:
     """
     Generate spans where middle = statement after a full-line comment (~3%).
     Teaches model to implement code from comment descriptions.
+
+    For large nodes (e.g. a comment above a 200-line function), the span is
+    truncated to the first N statements of the node body rather than masking
+    the entire thing.
     """
     spans = []
     if not tree:
@@ -178,13 +239,19 @@ def generate_post_comment_spans(
                         next_sib = node.children[i + 1]
                         if next_sib.type != "comment" and next_sib.end_byte - next_sib.start_byte > 5:
                             start_line = next_sib.start_point[0]
-                            end_line = next_sib.end_point[0]
+                            end_byte = next_sib.end_byte
+                            sib_lines = next_sib.end_point[0] - start_line + 1
+                            if sib_lines > max_middle_lines:
+                                end_byte = _truncate_node_to_statements(
+                                    next_sib, source_bytes, max_middle_lines,
+                                )
+                            end_line = source_bytes[:end_byte].count(b"\n")
                             spans.append(CodeSpan(
                                 kind="dev_post_comment",
                                 start_line=start_line,
                                 end_line=end_line,
                                 start_byte=next_sib.start_byte,
-                                end_byte=next_sib.end_byte,
+                                end_byte=end_byte,
                             ))
             if child.child_count > 0:
                 _collect_comment_spans(child)

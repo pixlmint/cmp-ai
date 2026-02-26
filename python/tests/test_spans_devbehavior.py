@@ -46,6 +46,32 @@ class TestIncompleteLineSpans:
         spans = generate_incomplete_line_spans(simple_class_php, tree=None)
         assert len(spans) >= 1
 
+    @needs_tree_sitter
+    def test_truncates_long_node_expansion(self, seed_rng):
+        """Syntax-aware expansion into a large node should be capped."""
+        body_lines = "\n".join(
+            f"        $x{i} = {i};" for i in range(60)
+        )
+        source = f"""\
+<?php
+
+class Big
+{{
+    public function init(): void
+    {{
+{body_lines}
+    }}
+}}
+"""
+        tree = _parse_tree(source)
+        spans = generate_incomplete_line_spans(source, tree, max_middle_lines=8)
+        for span in spans:
+            middle = source[span.start_byte:span.end_byte]
+            middle_lines = middle.count("\n") + 1
+            assert middle_lines <= 10, (
+                f"Expected roughly <= max_middle_lines, got {middle_lines}"
+            )
+
 
 class TestBracketContentSpans:
     @needs_tree_sitter
@@ -79,6 +105,50 @@ class TestPostCommentSpans:
     def test_returns_empty_without_tree(self, class_with_comments_php):
         spans = generate_post_comment_spans(class_with_comments_php, tree=None)
         assert spans == []
+
+    @needs_tree_sitter
+    def test_truncates_long_function_after_comment(self, seed_rng):
+        """A comment before a 50-line function should produce a truncated span."""
+        body_lines = "\n".join(
+            f"        $x{i} = {i};" for i in range(50)
+        )
+        source = f"""\
+<?php
+
+class Big
+{{
+    // Initialize all variables
+    public function init(): void
+    {{
+{body_lines}
+    }}
+}}
+"""
+        tree = _parse_tree(source)
+        spans = generate_post_comment_spans(source, tree, max_middle_lines=10)
+        assert len(spans) >= 1
+        for span in spans:
+            middle = source[span.start_byte:span.end_byte]
+            middle_lines = middle.count("\n") + 1
+            assert middle_lines <= 10, (
+                f"Expected <= 10 lines, got {middle_lines}"
+            )
+            assert middle_lines >= 3, "Truncation should still include some statements"
+
+    @needs_tree_sitter
+    def test_small_function_not_truncated(self, class_with_comments_php, seed_rng):
+        """Functions already under the limit should be kept intact."""
+        tree = _parse_tree(class_with_comments_php)
+        spans_limited = generate_post_comment_spans(
+            class_with_comments_php, tree, max_middle_lines=30,
+        )
+        spans_unlimited = generate_post_comment_spans(
+            class_with_comments_php, tree, max_middle_lines=9999,
+        )
+        # Same spans since the fixture functions are small
+        assert len(spans_limited) == len(spans_unlimited)
+        for a, b in zip(spans_limited, spans_unlimited):
+            assert a.end_byte == b.end_byte
 
 
 class TestDocCommentSpans:
