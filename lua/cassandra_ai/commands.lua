@@ -517,6 +517,8 @@ function M.setup()
             local root = project.get_project_root(filepath)
             local status = fcs.get_status()
 
+            local conf = require('cassandra_ai.config')
+
             local lines = {
               '# fimcontextserver debug',
               '',
@@ -524,12 +526,19 @@ function M.setup()
               'filepath: ' .. (filepath ~= '' and filepath or '(unnamed buffer)'),
               'project_root: ' .. (root or '(none)'),
               '',
-              '## Config',
+              '## fimcontextserver Config',
             }
 
             if root then
-              local conf = project.get_config(root)
-              for _, line in ipairs(vim.split(vim.inspect(conf), '\n', { plain = true })) do
+              local fcs_conf = project.get_config(root)
+              for _, line in ipairs(vim.split(vim.inspect(fcs_conf), '\n', { plain = true })) do
+                table.insert(lines, line)
+              end
+
+              table.insert(lines, '')
+              table.insert(lines, '## Effective Config (all overrides merged)')
+              local effective = conf:effective(filepath)
+              for _, line in ipairs(vim.split(vim.inspect(effective), '\n', { plain = true })) do
                 table.insert(lines, line)
               end
             else
@@ -635,15 +644,16 @@ function M.setup()
           end,
         },
         reload = {
-          description = 'Re-read .cassandra.json for the current project',
+          description = 'Re-read config files for the current project',
           execute = function(_)
+            local conf = require('cassandra_ai.config')
             local project = require('cassandra_ai.fimcontextserver.project')
             local filepath = vim.api.nvim_buf_get_name(0)
             local root = project.get_project_root(filepath)
             if root then
-              project.invalidate(root)
+              conf:invalidate(root)
               local new_conf = project.get_config(root)
-              vim.notify('Reloaded .cassandra.json for ' .. root .. '\n' .. vim.inspect(new_conf), vim.log.levels.INFO)
+              vim.notify('Reloaded config for ' .. root .. '\n' .. vim.inspect(new_conf), vim.log.levels.INFO)
             else
               vim.notify('No project root found for current file', vim.log.levels.WARN)
             end

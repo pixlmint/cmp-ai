@@ -1,164 +1,57 @@
 --- Per-project configuration for fimcontextserver
---- Resolves project root and merges config from plugin settings + .cassandra.json
+--- Delegates project root detection and config resolution to config.lua,
+--- then extracts the fimcontextserver sub-table with defaults applied.
 local logger = require('cassandra_ai.logger')
 
 local M = {}
 
--- Caches
-local root_cache = {} -- dir -> project_root or false
-local config_cache = {} -- project_root -> merged config
-
---- Default project configuration
+--- Default fimcontextserver project configuration
 local defaults = {
   include_paths = {},
   model = nil,
   bm25 = false,
 }
 
---- Walk up from filepath looking for .cassandra.json, then check known project roots
+--- Walk up from filepath to find the project root
 --- @param filepath string Absolute file path
 --- @return string|nil project_root
 function M.get_project_root(filepath)
-  if not filepath or filepath == '' then
-    return nil
-  end
-
-  local dir = vim.fn.fnamemodify(filepath, ':h')
-  if root_cache[dir] ~= nil then
-    return root_cache[dir] or nil
-  end
-
-  -- Walk up looking for .cassandra.json first (project-specific config)
-  local cassandra_root = vim.fn.findfile('.cassandra.json', dir .. ';')
-  if cassandra_root ~= '' then
-    local root = vim.fn.fnamemodify(cassandra_root, ':h')
-    root_cache[dir] = root
-    return root
-  end
-
-  -- Fall back to checking if filepath is under any known project root from plugin config
   local conf = require('cassandra_ai.config')
-  local projects = conf:get('projects') or {}
-  for root, _ in pairs(projects) do
-    if vim.startswith(filepath, root .. '/') then
-      root_cache[dir] = root
-      return root
-    end
-  end
-
-  -- Fall back to common project root markers
-  local root = vim.fs.root(filepath, { '.git', 'package.json', 'Cargo.toml', 'go.mod', 'pyproject.toml', 'Makefile', '.hg', 'flake.nix' })
-  if root then
-    root_cache[dir] = root
-    logger.trace('project: detected project root via filesystem markers: ' .. root)
-    return root
-  end
-
-  root_cache[dir] = false
-  return nil
+  return conf:get_project_root(filepath)
 end
 
---- Check if filepath belongs to a registered project (has .cassandra.json or is in config.projects)
---- Unlike get_project_root(), this skips the generic filesystem marker fallback (.git, etc.)
+--- Check if filepath belongs to a registered project (has .cassandra.json or is in config)
 --- @param filepath string Absolute file path
 --- @return string|nil project_root
 function M.is_registered_project(filepath)
-  if not filepath or filepath == '' then
-    return nil
-  end
-
-  local dir = vim.fn.fnamemodify(filepath, ':h')
-
-  -- Walk up looking for .cassandra.json
-  local cassandra_root = vim.fn.findfile('.cassandra.json', dir .. ';')
-  if cassandra_root ~= '' then
-    local root = vim.fn.fnamemodify(cassandra_root, ':h')
-    return root
-  end
-
-  -- Check if filepath is under any known project root from plugin config
   local conf = require('cassandra_ai.config')
-  local projects = conf:get('projects') or {}
-  for root, _ in pairs(projects) do
-    if vim.startswith(filepath, root .. '/') then
-      return root
-    end
-  end
-
-  return nil
+  return conf:is_registered_project(filepath)
 end
 
---- Read and parse .cassandra.json from a project root
+--- Get merged fimcontextserver config for a project root
+--- Resolves full effective config via config:effective(), then extracts the
+--- fimcontextserver sub-table and applies fimcontextserver-specific defaults.
 --- @param project_root string
---- @return table|nil parsed config
-local function read_local_config(project_root)
-  local config_path = project_root .. '/.cassandra.json'
-  local f = io.open(config_path, 'r')
-  if not f then
-    return nil
-  end
-
-  local content = f:read('*a')
-  f:close()
-
-  local ok, parsed = pcall(vim.json.decode, content)
-  if not ok then
-    logger.warn('project: failed to parse .cassandra.json at ' .. config_path .. ': ' .. tostring(parsed))
-    return nil
-  end
-
-  logger.debug('project: loaded .cassandra.json from ' .. config_path)
-  return parsed
-end
-
---- Get merged config for a project root
---- Merge order: defaults < plugin config (projects[root]) < .cassandra.json
---- @param project_root string
---- @return table merged config
+--- @return table merged fimcontextserver config
 function M.get_config(project_root)
-  if config_cache[project_root] then
-    return config_cache[project_root]
-  end
-
   local conf = require('cassandra_ai.config')
 
-  -- Start with defaults
-  local merged = vim.deepcopy(defaults)
+  -- Use a synthetic filepath to resolve effective config for this root
+  local effective = conf:effective(project_root .. '/.')
 
-  -- Layer plugin-level project config
-  local projects = conf:get('projects') or {}
-  local plugin_project = projects[project_root]
-  if plugin_project then
-    merged = vim.tbl_deep_extend('force', merged, plugin_project)
-  end
+  -- Extract fimcontextserver sub-table and apply defaults
+  local fcs_conf = effective.fimcontextserver or {}
+  local merged = vim.tbl_deep_extend('force', vim.deepcopy(defaults), fcs_conf)
 
-  -- Layer .cassandra.json (highest priority)
-  local local_config = read_local_config(project_root)
-  if local_config then
-    merged = vim.tbl_deep_extend('force', merged, local_config)
-  end
-
-  config_cache[project_root] = merged
+  logger.trace('project.get_config() -> ' .. project_root .. ' -> ' .. vim.inspect(merged))
   return merged
 end
 
---- Clear cached config for a project root (for :Cassy fimcontextserver reload)
+--- Clear cached config for a project root
 --- @param project_root string|nil If nil, clears all caches
 function M.invalidate(project_root)
-  if project_root then
-    config_cache[project_root] = nil
-    -- Also clear root cache entries that point to this root
-    for dir, root in pairs(root_cache) do
-      if root == project_root then
-        root_cache[dir] = nil
-      end
-    end
-    logger.debug('project: invalidated config for ' .. project_root)
-  else
-    config_cache = {}
-    root_cache = {}
-    logger.debug('project: invalidated all cached configs')
-  end
+  local conf = require('cassandra_ai.config')
+  conf:invalidate(project_root)
 end
 
 return M

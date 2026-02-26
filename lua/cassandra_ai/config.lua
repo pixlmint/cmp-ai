@@ -77,6 +77,204 @@ local conf = {
   },
 }
 
+-- Caches for project root detection and effective config
+local root_cache = {} -- dir -> project_root or false
+local effective_cache = {} -- project_root -> merged config
+local global_projects_json = nil -- contents of ~/.config/cassandra.json
+
+--- Read and parse a JSON file
+--- @param path string Absolute file path
+--- @return table|nil parsed JSON, or nil on failure
+local function read_json_file(path)
+  local logger = require('cassandra_ai.logger')
+  local f = io.open(path, 'r')
+  if not f then
+    return nil
+  end
+
+  local content = f:read('*a')
+  f:close()
+
+  local ok, parsed = pcall(vim.json.decode, content)
+  if not ok then
+    logger.warn('config: failed to parse JSON at ' .. path .. ': ' .. tostring(parsed))
+    return nil
+  end
+
+  return parsed
+end
+
+--- Read ~/.config/cassandra.json (global per-project overrides)
+--- @return table dict of project_root -> config overrides
+local function read_global_projects_config()
+  local logger = require('cassandra_ai.logger')
+  local path = vim.fn.expand('~/.config/cassandra.json')
+  local parsed = read_json_file(path)
+  if parsed then
+    logger.debug('config: loaded global projects config from ' .. path)
+  end
+  return parsed or {}
+end
+
+--- Walk up from filepath looking for .cassandra.json, then check known project roots,
+--- then fall back to filesystem markers (.git, etc.)
+--- @param filepath string Absolute file path
+--- @return string|nil project_root
+function M:get_project_root(filepath)
+  if not filepath or filepath == '' then
+    return nil
+  end
+
+  local dir = vim.fn.fnamemodify(filepath, ':h')
+  if root_cache[dir] ~= nil then
+    return root_cache[dir] or nil
+  end
+
+  local logger = require('cassandra_ai.logger')
+
+  -- Walk up looking for .cassandra.json first (project-specific config)
+  local cassandra_root = vim.fn.findfile('.cassandra.json', dir .. ';')
+  if cassandra_root ~= '' then
+    local root = vim.fn.fnamemodify(cassandra_root, ':h')
+    root_cache[dir] = root
+    return root
+  end
+
+  -- Check if filepath is under any known project root from plugin config
+  local projects = conf.projects or {}
+  for root, _ in pairs(projects) do
+    if vim.startswith(filepath, root .. '/') then
+      root_cache[dir] = root
+      return root
+    end
+  end
+
+  -- Check if filepath is under any known project root from global JSON config
+  local global_json = global_projects_json or {}
+  for root, _ in pairs(global_json) do
+    if vim.startswith(filepath, root .. '/') then
+      root_cache[dir] = root
+      return root
+    end
+  end
+
+  -- Fall back to common project root markers
+  local root = vim.fs.root(filepath, { '.git', 'package.json', 'Cargo.toml', 'go.mod', 'pyproject.toml', 'Makefile', '.hg', 'flake.nix' })
+  if root then
+    root_cache[dir] = root
+    logger.trace('config: detected project root via filesystem markers: ' .. root)
+    return root
+  end
+
+  root_cache[dir] = false
+  return nil
+end
+
+--- Check if filepath belongs to a registered project (has .cassandra.json, is in
+--- config.projects, or is in ~/.config/cassandra.json). Unlike get_project_root(),
+--- this skips the generic filesystem marker fallback (.git, etc.)
+--- @param filepath string Absolute file path
+--- @return string|nil project_root
+function M:is_registered_project(filepath)
+  if not filepath or filepath == '' then
+    return nil
+  end
+
+  local dir = vim.fn.fnamemodify(filepath, ':h')
+
+  -- Walk up looking for .cassandra.json
+  local cassandra_root = vim.fn.findfile('.cassandra.json', dir .. ';')
+  if cassandra_root ~= '' then
+    local root = vim.fn.fnamemodify(cassandra_root, ':h')
+    return root
+  end
+
+  -- Check if filepath is under any known project root from plugin config
+  local projects = conf.projects or {}
+  for root, _ in pairs(projects) do
+    if vim.startswith(filepath, root .. '/') then
+      return root
+    end
+  end
+
+  -- Check if filepath is under any known project root from global JSON config
+  local global_json = global_projects_json or {}
+  for root, _ in pairs(global_json) do
+    if vim.startswith(filepath, root .. '/') then
+      return root
+    end
+  end
+
+  return nil
+end
+
+--- Get fully resolved config for a file's project.
+--- Resolution order: defaults+setup < ~/.config/cassandra.json[root] < projects[root] < .cassandra.json
+--- @param filepath string Absolute file path
+--- @return table effective config (full plugin config with project overrides applied)
+function M:effective(filepath)
+  local root = self:get_project_root(filepath)
+  if not root then
+    return conf
+  end
+
+  if effective_cache[root] then
+    return effective_cache[root]
+  end
+
+  local logger = require('cassandra_ai.logger')
+
+  -- Start with global conf (defaults + setup params already merged)
+  local merged = vim.deepcopy(conf)
+
+  -- Layer 1: ~/.config/cassandra.json[root]
+  local global_json = global_projects_json or {}
+  local global_overrides = global_json[root]
+  if global_overrides then
+    logger.trace('config:effective() -> applying global JSON overrides for ' .. root)
+    merged = vim.tbl_deep_extend('force', merged, global_overrides)
+  end
+
+  -- Layer 2: setup().projects[root]
+  local project_overrides = conf.projects[root]
+  if project_overrides then
+    logger.trace('config:effective() -> applying setup() project overrides for ' .. root)
+    merged = vim.tbl_deep_extend('force', merged, project_overrides)
+  end
+
+  -- Layer 3: .cassandra.json in project root (highest priority)
+  local local_json = read_json_file(root .. '/.cassandra.json')
+  if local_json then
+    logger.trace('config:effective() -> applying .cassandra.json overrides from ' .. root)
+    merged = vim.tbl_deep_extend('force', merged, local_json)
+  end
+
+  effective_cache[root] = merged
+  return merged
+end
+
+--- Clear cached config for a project root
+--- @param project_root string|nil If nil, clears all caches
+function M:invalidate(project_root)
+  local logger = require('cassandra_ai.logger')
+  if project_root then
+    effective_cache[project_root] = nil
+    -- Also clear root cache entries that point to this root
+    for dir, root in pairs(root_cache) do
+      if root == project_root then
+        root_cache[dir] = nil
+      end
+    end
+    logger.debug('config: invalidated caches for ' .. project_root)
+  else
+    effective_cache = {}
+    root_cache = {}
+    -- Re-read global projects config
+    global_projects_json = read_global_projects_config()
+    logger.debug('config: invalidated all caches')
+  end
+end
+
 function M:setup(params)
   params = params or {}
 
@@ -96,6 +294,9 @@ function M:setup(params)
   })
 
   logger.trace('config:setup()')
+
+  -- Read global per-project config file
+  global_projects_json = read_global_projects_config()
 
   require('cassandra_ai.suggest').setup(conf.suggest)
 
@@ -167,14 +368,14 @@ function M:setup(params)
     end
     -- Auto-start fimcontextserver if current project is registered
     vim.schedule(function()
-      local project = require('cassandra_ai.fimcontextserver.project')
       local filepath = vim.api.nvim_buf_get_name(0)
       if filepath == '' then
         filepath = vim.fn.getcwd() .. '/.'
       end
-      local root = project.is_registered_project(filepath)
+      local root = self:is_registered_project(filepath)
       if root then
         local fcs = require('cassandra_ai.fimcontextserver')
+        local project = require('cassandra_ai.fimcontextserver.project')
         local proj_conf = project.get_config(root)
         logger.info('fimcontextserver: auto-starting for registered project ' .. root)
         fcs.get_or_start(root, proj_conf, function(ok)
