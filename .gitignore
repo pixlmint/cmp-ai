@@ -5,3 +5,6 @@ __pycache__
 /python/.dataset
 node_modules
 /viewer/dist
+luacov.stats.out
+luacov.report.out
+lcov.info

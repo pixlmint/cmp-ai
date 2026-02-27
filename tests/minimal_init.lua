@@ -3,6 +3,27 @@ vim.cmd('set rtp+=tests/deps/mini.nvim')
 vim.cmd('set rtp+=tests/deps/plenary.nvim')
 vim.cmd('set rtp+=tests/deps/nvim-treesitter')
 
+-- Load luacov for coverage when LUACOV=1 env var is set
+if os.getenv('LUACOV') == '1' then
+  -- Add luarocks paths so luacov is findable from LuaJIT
+  local lr_path = os.getenv('LUACOV_LRPATH')
+  if lr_path then
+    package.path = package.path .. ';' .. lr_path
+  end
+  local ok, luacov = pcall(require, 'luacov.runner')
+  if ok then
+    luacov.init()
+    -- Neovim's qa! doesn't trigger normal Lua shutdown, so flush stats on VimLeavePre
+    vim.api.nvim_create_autocmd('VimLeavePre', {
+      callback = function()
+        luacov.save_stats()
+      end,
+    })
+  else
+    print('WARNING: luacov failed to load: ' .. tostring(luacov))
+  end
+end
+
 -- Ensure mini.test is available with custom config to exclude deps
 require('mini.test').setup({
   collect = {

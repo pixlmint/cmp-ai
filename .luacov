@@ -1,0 +1,11 @@
+-- LuaCov configuration for cassandra-ai.nvim
+-- Only track coverage for plugin source, not tests or dependencies
+return {
+  include = {
+    'lua/cassandra_ai/.+',
+  },
+  exclude = {
+    'tests/',
+    'tests/deps/',
+  },
+}
