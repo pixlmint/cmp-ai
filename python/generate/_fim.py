@@ -188,6 +188,8 @@ def generate_fim_examples(
     use_ast: bool = True,
     bm25_index: BM25Index | None = None,
     lang_config=None,
+    only_spans: set[str] | None = None,
+    exclude_spans: set[str] | None = None,
 ) -> list[FIMExample]:
     """
     Generate FIM training examples from a single source file.
@@ -246,6 +248,12 @@ def generate_fim_examples(
     # Random char-level spans (~10%)
     char_spans = generate_char_level_splits(source)
     all_spans.extend(char_spans)
+
+    # --- Filter spans by kind ---
+    if only_spans is not None:
+        all_spans = [s for s in all_spans if s.kind in only_spans]
+    elif exclude_spans is not None:
+        all_spans = [s for s in all_spans if s.kind not in exclude_spans]
 
     # --- Convert spans to FIMExamples ---
     for span in all_spans:

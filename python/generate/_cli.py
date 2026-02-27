@@ -87,6 +87,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
                         help="Apply heuristic quality filtering")
     parser.add_argument("--min-middle-chars", type=int, default=40,
                         help="Minimum middle section length in chars (default: 40)")
+    # Span kind filtering
+    span_group = parser.add_mutually_exclusive_group()
+    span_group.add_argument('--only-spans', nargs='+', metavar='KIND',
+                            help='Only include these span kinds')
+    span_group.add_argument('--exclude-spans', nargs='+', metavar='KIND',
+                            help='Exclude these span kinds')
     return parser
 
 
@@ -157,6 +163,8 @@ def generate_all_examples(args, source_files, context_pool, bm25_index, use_ast,
             use_ast=use_ast,
             bm25_index=bm25_index,
             lang_config=lang_config,
+            only_spans=set(args.only_spans) if args.only_spans else None,
+            exclude_spans=set(args.exclude_spans) if args.exclude_spans else None,
         )
 
         # Assign complexity scores
