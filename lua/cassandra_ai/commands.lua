@@ -1,5 +1,6 @@
 --- User commands for cassandra-ai
 local M = {}
+local util = require('cassandra_ai.util')
 
 --- Creates an autocompletion function for a command tree
 --- @param commands table The command tree structure
@@ -26,13 +27,11 @@ function create_completer(commands)
 
     -- Handle options completion (flags starting with -)
     if current[last_word] and current[last_word].options and words[#words]:sub(1, 1) == '-' then
-      local matches = {}
+      local option_names = {}
       for opt, _ in pairs(current[last_word].options) do
-        if opt:find('^' .. vim.pesc(words[#words])) then
-          table.insert(matches, opt)
-        end
+        table.insert(option_names, opt)
       end
-      return matches
+      return util.filter_completions(option_names, words[#words])
     end
 
     -- Use custom completion function if available
@@ -41,14 +40,11 @@ function create_completer(commands)
     end
 
     -- Complete available commands at this level
-    local matches = {}
+    local cmds = {}
     for cmd in pairs(current) do
-      if cmd:find('^' .. vim.pesc(arglead)) then
-        table.insert(matches, cmd)
-      end
+      table.insert(cmds, cmd)
     end
-
-    return matches
+    return util.filter_completions(cmds, arglead)
   end
 end
 
@@ -169,9 +165,6 @@ local function show_context(provider_name)
   -- Get context from provider
   local success, err = pcall(function()
     target_provider.instance:get_context(params, function(result)
-      -- Create popup buffer
-      local popup_buf = vim.api.nvim_create_buf(false, true)
-
       -- Format content
       local lines = {
         '# Context from provider: ' .. provider_name,
@@ -200,45 +193,11 @@ local function show_context(provider_name)
         table.insert(lines, '(no content)')
       end
 
-      -- Add separator
       table.insert(lines, '')
       table.insert(lines, '---')
       table.insert(lines, 'Press q to close')
 
-      vim.api.nvim_buf_set_lines(popup_buf, 0, -1, false, lines)
-      vim.api.nvim_buf_set_option(popup_buf, 'modifiable', false)
-      vim.api.nvim_buf_set_option(popup_buf, 'buftype', 'nofile')
-      vim.api.nvim_buf_set_option(popup_buf, 'filetype', 'markdown')
-
-      -- Calculate popup size
-      local width = math.floor(vim.o.columns * 0.8)
-      local height = math.floor(vim.o.lines * 0.8)
-      local row = math.floor((vim.o.lines - height) / 2)
-      local col = math.floor((vim.o.columns - width) / 2)
-
-      -- Create popup window
-      local win = vim.api.nvim_open_win(popup_buf, true, {
-        relative = 'editor',
-        width = width,
-        height = height,
-        row = row,
-        col = col,
-        style = 'minimal',
-        border = 'rounded',
-        title = ' Context: ' .. provider_name .. ' ',
-        title_pos = 'center',
-      })
-
-      -- Set window options
-      vim.api.nvim_win_set_option(win, 'wrap', true)
-      vim.api.nvim_win_set_option(win, 'linebreak', true)
-
-      -- Add keybinding to close
-      vim.api.nvim_buf_set_keymap(popup_buf, 'n', 'q', ':close<CR>', {
-        noremap = true,
-        silent = true,
-      })
-
+      util.create_popup(lines, 'Context: ' .. provider_name)
       vim.notify('Context retrieved successfully', vim.log.levels.INFO)
     end)
   end)
@@ -262,14 +221,10 @@ function M.setup()
 
         local providers = context_manager.get_providers()
         local names = {}
-
         for _, provider_data in ipairs(providers) do
-          if provider_data.name:find('^' .. arglead) then
-            table.insert(names, provider_data.name)
-          end
+          table.insert(names, provider_data.name)
         end
-
-        return names
+        return util.filter_completions(names, arglead)
       end,
       execute = function(opts)
         local provider_name = opts[1]
@@ -304,82 +259,26 @@ function M.setup()
     config = {
       description = 'Change configuration at runtime',
       subcommands = {
-        auto_trigger = {
-          description = 'Toggle, enable, or disable auto_trigger',
-          complete = function(arglead)
-            local options = { 'toggle', 'enable', 'disable' }
-            local matches = {}
-            for _, opt in ipairs(options) do
-              if opt:find('^' .. vim.pesc(arglead)) then
-                table.insert(matches, opt)
-              end
-            end
-            return matches
-          end,
-          execute = function(opts)
-            local conf = require('cassandra_ai.config')
-            local suggest = conf:get('suggest')
-            local action = opts[1]
-
-            if action == 'toggle' then
-              suggest.auto_trigger = not suggest.auto_trigger
-            elseif action == 'enable' then
-              suggest.auto_trigger = true
-            elseif action == 'disable' then
-              suggest.auto_trigger = false
-            else
-              vim.notify('Usage: :Cassy config auto_trigger toggle|enable|disable', vim.log.levels.ERROR)
-              return
-            end
-
-            vim.notify('auto_trigger: ' .. (suggest.auto_trigger and 'enabled' or 'disabled'), vim.log.levels.INFO)
-          end,
-        },
-        telemetry = {
-          description = 'Toggle, enable, or disable telemetry',
-          complete = function(arglead)
-            local options = { 'toggle', 'enable', 'disable' }
-            local matches = {}
-            for _, opt in ipairs(options) do
-              if opt:find('^' .. vim.pesc(arglead)) then
-                table.insert(matches, opt)
-              end
-            end
-            return matches
-          end,
-          execute = function(opts)
-            local conf = require('cassandra_ai.config')
-            local telemetry = require('cassandra_ai.telemetry')
-            local action = opts[1]
-            local enabled
-
-            if action == 'toggle' then
-              enabled = not telemetry:is_enabled()
-            elseif action == 'enable' then
-              enabled = true
-            elseif action == 'disable' then
-              enabled = false
-            else
-              vim.notify('Usage: :Cassy config telemetry toggle|enable|disable', vim.log.levels.ERROR)
-              return
-            end
-
-            telemetry:set_enabled(enabled)
-            conf:set('collect_data', enabled)
-            vim.notify('telemetry: ' .. (enabled and 'enabled' or 'disabled'), vim.log.levels.INFO)
-          end,
-        },
+        auto_trigger = util.create_toggle_command('auto_trigger', function()
+          local conf = require('cassandra_ai.config')
+          return conf:get('suggest').auto_trigger
+        end, function(enabled)
+          local conf = require('cassandra_ai.config')
+          conf:get('suggest').auto_trigger = enabled
+        end),
+        telemetry = util.create_toggle_command('telemetry', function()
+          local telemetry = require('cassandra_ai.telemetry')
+          return telemetry:is_enabled()
+        end, function(enabled)
+          local conf = require('cassandra_ai.config')
+          local telemetry = require('cassandra_ai.telemetry')
+          telemetry:set_enabled(enabled)
+          conf:set('collect_data', enabled)
+        end),
         log_level = {
           description = 'Set the log level',
           complete = function(arglead)
-            local levels = { 'TRACE', 'DEBUG', 'INFO', 'WARN', 'ERROR' }
-            local matches = {}
-            for _, level in ipairs(levels) do
-              if level:find('^' .. vim.pesc(arglead:upper())) then
-                table.insert(matches, level)
-              end
-            end
-            return matches
+            return util.filter_completions({ 'TRACE', 'DEBUG', 'INFO', 'WARN', 'ERROR' }, arglead:upper())
           end,
           execute = function(opts)
             local level = opts[1]
@@ -404,21 +303,15 @@ function M.setup()
           complete = function(arglead)
             local conf = require('cassandra_ai.config')
             local provider = conf:get('provider')
-            local matches = { 'auto' }
+            local candidates = { 'auto' }
 
             if provider and provider.params and provider.params.model_configs then
               for name, _ in pairs(provider.params.model_configs) do
-                table.insert(matches, name)
+                table.insert(candidates, name)
               end
             end
 
-            local filtered = {}
-            for _, m in ipairs(matches) do
-              if m:find('^' .. vim.pesc(arglead)) then
-                table.insert(filtered, m)
-              end
-            end
-            return filtered
+            return util.filter_completions(candidates, arglead)
           end,
           execute = function(opts)
             local model_name = opts[1]
@@ -553,35 +446,6 @@ function M.setup()
             table.insert(lines, 'bm25_chunks: ' .. (status.bm25_chunks or '?'))
             table.insert(lines, 'restart_count: ' .. (status.restart_count or 0))
 
-            local function show_popup(lines)
-              local popup_buf = vim.api.nvim_create_buf(false, true)
-              vim.api.nvim_buf_set_lines(popup_buf, 0, -1, false, lines)
-              vim.api.nvim_buf_set_option(popup_buf, 'modifiable', false)
-              vim.api.nvim_buf_set_option(popup_buf, 'buftype', 'nofile')
-              vim.api.nvim_buf_set_option(popup_buf, 'filetype', 'markdown')
-
-              local width = math.floor(vim.o.columns * 0.8)
-              local height = math.floor(vim.o.lines * 0.8)
-              local row = math.floor((vim.o.lines - height) / 2)
-              local col = math.floor((vim.o.columns - width) / 2)
-
-              local win = vim.api.nvim_open_win(popup_buf, true, {
-                relative = 'editor',
-                width = width,
-                height = height,
-                row = row,
-                col = col,
-                style = 'minimal',
-                border = 'rounded',
-                title = ' fimcontextserver debug ',
-                title_pos = 'center',
-              })
-
-              vim.api.nvim_win_set_option(win, 'wrap', true)
-              vim.api.nvim_win_set_option(win, 'linebreak', true)
-              vim.api.nvim_buf_set_keymap(popup_buf, 'n', 'q', ':close<CR>', { noremap = true, silent = true })
-            end
-
             -- If no root or server not ready, show what we have
             if not root or status.status ~= 'ready' then
               table.insert(lines, '')
@@ -590,7 +454,7 @@ function M.setup()
               table.insert(lines, '')
               table.insert(lines, '---')
               table.insert(lines, 'Press q to close')
-              show_popup(lines)
+              util.create_popup(lines, 'fimcontextserver debug')
               return
             end
 
@@ -638,7 +502,7 @@ function M.setup()
                 table.insert(lines, '')
                 table.insert(lines, '---')
                 table.insert(lines, 'Press q to close')
-                show_popup(lines)
+                util.create_popup(lines, 'fimcontextserver debug')
               end)
             end)
           end,
