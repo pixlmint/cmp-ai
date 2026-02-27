@@ -58,7 +58,7 @@ function M.create_popup(lines, title, opts)
   vim.api.nvim_buf_set_lines(popup_buf, 0, -1, false, lines)
   vim.api.nvim_buf_set_option(popup_buf, 'modifiable', false)
   vim.api.nvim_buf_set_option(popup_buf, 'buftype', 'nofile')
-  vim.api.nvim_buf_set_option(popup_buf, 'filetype', 'markdown')
+  vim.api.nvim_buf_set_option(popup_buf, 'filetype', opts.filetype or 'markdown')
 
   local width_pct = opts.width_pct or 0.8
   local height_pct = opts.height_pct or 0.8

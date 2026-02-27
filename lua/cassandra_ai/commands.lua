@@ -336,6 +336,18 @@ function M.setup()
             end
           end,
         },
+        print = {
+          description = 'Show resolved configuration in a popup',
+          execute = function()
+            local conf = require('cassandra_ai.config')
+            local filepath = vim.api.nvim_buf_get_name(0)
+            local effective = conf:effective(filepath)
+            local sanitized = util.safe_serialize_config(effective)
+            local text = vim.inspect(sanitized)
+            local lines = vim.split(text, '\n', { trimempty = true })
+            util.create_popup(lines, 'Cassy Config', { filetype = 'lua' })
+          end,
+        },
       },
     },
     fimcontextserver = {
