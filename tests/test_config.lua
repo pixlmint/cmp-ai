@@ -22,14 +22,14 @@ T['Config']['setup() sets default values'] = function()
   ]])
 
   local max_lines = child.lua_get([[require('cassandra_ai.config'):get('max_lines')]])
-  local run_on_every_keystroke = child.lua_get([[require('cassandra_ai.config'):get('run_on_every_keystroke')]])
-  local log_errors = child.lua_get([[require('cassandra_ai.config'):get('log_errors')]])
-  local notify = child.lua_get([[require('cassandra_ai.config'):get('notify')]])
+  local auto_trigger = child.lua_get([[require('cassandra_ai.config'):get('suggest').auto_trigger]])
+  local debounce_ms = child.lua_get([[require('cassandra_ai.config'):get('suggest').debounce_ms]])
+  local log_level = child.lua_get([[require('cassandra_ai.config'):get('logging').level]])
 
   h.eq(max_lines, 50)
-  h.is_true(run_on_every_keystroke)
-  h.is_true(log_errors)
-  h.is_true(notify)
+  h.is_true(auto_trigger)
+  h.eq(debounce_ms, 150)
+  h.eq(log_level, 'WARN')
 end
 
 T['Config']['setup() accepts custom values'] = function()
@@ -37,18 +37,17 @@ T['Config']['setup() accepts custom values'] = function()
     local config = require('cassandra_ai.config')
     config:setup({
       max_lines = 100,
-      run_on_every_keystroke = false,
-      log_errors = false,
+      suggest = { auto_trigger = false, debounce_ms = 300 },
     })
   ]])
 
   local max_lines = child.lua_get([[require('cassandra_ai.config'):get('max_lines')]])
-  local run_on_every_keystroke = child.lua_get([[require('cassandra_ai.config'):get('run_on_every_keystroke')]])
-  local log_errors = child.lua_get([[require('cassandra_ai.config'):get('log_errors')]])
+  local auto_trigger = child.lua_get([[require('cassandra_ai.config'):get('suggest').auto_trigger]])
+  local debounce_ms = child.lua_get([[require('cassandra_ai.config'):get('suggest').debounce_ms]])
 
   h.eq(max_lines, 100)
-  h.is_false(run_on_every_keystroke)
-  h.is_false(log_errors)
+  h.is_false(auto_trigger)
+  h.eq(debounce_ms, 300)
 end
 
 T['Config']['get() retrieves configuration values'] = function()
@@ -123,30 +122,32 @@ T['Config']['setup() handles provider_options'] = function()
   h.eq(provider_options.temperature, 0.5)
 end
 
-T['Config']['setup() handles data collection settings'] = function()
+T['Config']['setup() handles telemetry settings'] = function()
   child.lua([[
     local config = require('cassandra_ai.config')
     config:setup({
-      collect_data = true,
-      data_buffer_size = 100,
+      telemetry = { enabled = true, buffer_size = 100 },
     })
   ]])
 
-  local collect_data = child.lua_get([[require('cassandra_ai.config'):get('collect_data')]])
-  local buffer_size = child.lua_get([[require('cassandra_ai.config'):get('data_buffer_size')]])
+  local telemetry = child.lua_get([[require('cassandra_ai.config'):get('telemetry')]])
 
-  h.is_true(collect_data)
-  h.eq(buffer_size, 100)
+  h.is_true(telemetry.enabled)
+  h.eq(telemetry.buffer_size, 100)
 end
 
-T['Config']['setup() preserves notify_callback function'] = function()
+T['Config']['setup() sets telemetry defaults'] = function()
   child.lua([[
     local config = require('cassandra_ai.config')
     config:setup()
   ]])
 
-  local callback = child.lua_get([[type(require('cassandra_ai.config'):get('notify_callback'))]])
-  h.eq(callback, 'function')
+  local telemetry = child.lua_get([[require('cassandra_ai.config'):get('telemetry')]])
+
+  h.is_false(telemetry.enabled)
+  h.eq(telemetry.buffer_size, 50)
+  h.is_string(telemetry.file)
+  h.contains(telemetry.file, 'cassandra-ai/completions.jsonl')
 end
 
 T['Config']['setup() accepts custom merge strategy'] = function()
@@ -201,15 +202,15 @@ T['Config']['setup() handles nil configuration'] = function()
   h.eq(max_lines, 50) -- Should use default
 end
 
-T['Config']['data_file path uses stdpath'] = function()
+T['Config']['telemetry file path uses stdpath'] = function()
   child.lua([[
     local config = require('cassandra_ai.config')
     config:setup()
   ]])
 
-  local data_file = child.lua_get([[require('cassandra_ai.config'):get('data_file')]])
-  h.is_string(data_file)
-  h.contains(data_file, 'cassandra-ai/completions.jsonl')
+  local telemetry_file = child.lua_get([[require('cassandra_ai.config'):get('telemetry').file]])
+  h.is_string(telemetry_file)
+  h.contains(telemetry_file, 'cassandra-ai/completions.jsonl')
 end
 
 T['Config']['context_providers default timeout is set'] = function()
@@ -251,19 +252,18 @@ T['Config']['setup() handles boolean flags correctly'] = function()
   child.lua([[
     local config = require('cassandra_ai.config')
     config:setup({
-      notify = false,
-      log_errors = false,
-      collect_data = false,
+      suggest = { auto_trigger = false, deferred_validation = false },
+      telemetry = { enabled = false },
     })
   ]])
 
-  local notify = child.lua_get([[require('cassandra_ai.config'):get('notify')]])
-  local log_errors = child.lua_get([[require('cassandra_ai.config'):get('log_errors')]])
-  local collect_data = child.lua_get([[require('cassandra_ai.config'):get('collect_data')]])
+  local auto_trigger = child.lua_get([[require('cassandra_ai.config'):get('suggest').auto_trigger]])
+  local deferred_validation = child.lua_get([[require('cassandra_ai.config'):get('suggest').deferred_validation]])
+  local telemetry_enabled = child.lua_get([[require('cassandra_ai.config'):get('telemetry').enabled]])
 
-  h.is_false(notify)
-  h.is_false(log_errors)
-  h.is_false(collect_data)
+  h.is_false(auto_trigger)
+  h.is_false(deferred_validation)
+  h.is_false(telemetry_enabled)
 end
 
 return T

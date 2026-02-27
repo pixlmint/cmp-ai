@@ -75,4 +75,35 @@ T['PromptFormatters']['deprecated aliases produce valid PromptData'] = function(
   h.eq(child.lua_get('_G._pd.mode'), 'chat')
 end
 
+T['PromptFormatters']['chat() includes rejected completions as conversation history'] = function()
+  child.lua('_G._pd = require("cassandra_ai.prompt_formatters").chat("before", "after", { filetype = "lua", rejected_completions = { "bad1", "bad2" } })')
+
+  h.eq(child.lua_get('#_G._pd.messages'), 6)
+  h.eq(child.lua_get('_G._pd.messages[3].role'), 'assistant')
+  h.eq(child.lua_get('_G._pd.messages[3].content'), 'bad1')
+  h.eq(child.lua_get('_G._pd.messages[4].role'), 'user')
+  h.eq(child.lua_get('_G._pd.messages[5].role'), 'assistant')
+  h.eq(child.lua_get('_G._pd.messages[5].content'), 'bad2')
+  h.eq(child.lua_get('_G._pd.messages[6].role'), 'user')
+end
+
+T['PromptFormatters']['chat() with empty rejected_completions has only base messages'] = function()
+  child.lua('_G._pd = require("cassandra_ai.prompt_formatters").chat("before", "after", { filetype = "lua", rejected_completions = {} })')
+
+  h.eq(child.lua_get('#_G._pd.messages'), 2)
+end
+
+T['PromptFormatters']['fim() prepends additional_context to prefix'] = function()
+  child.lua('_G._pd = require("cassandra_ai.prompt_formatters").fim("prefix text", "suffix text", {}, "extra context")')
+
+  h.eq(child.lua_get('_G._pd.prefix'), 'extra context\nprefix text')
+  h.eq(child.lua_get('_G._pd.suffix'), 'suffix text')
+end
+
+T['PromptFormatters']['fim() without additional_context uses prefix directly'] = function()
+  child.lua('_G._pd = require("cassandra_ai.prompt_formatters").fim("prefix text", "suffix text")')
+
+  h.eq(child.lua_get('_G._pd.prefix'), 'prefix text')
+end
+
 return T
